@@ -9,21 +9,14 @@ const $ = id => document.getElementById(id);
 const SAVE_KEY = 'tamatalk.save.v1', SET_KEY = 'tamatalk.settings.v1', ALB_KEY = 'tamatalk.album.v1', SHOP_KEY = 'tamatalk.shop.v1';
 let FEET = 88;            // pet stands with its feet here (96×96 screen); higher in tama view so the icons don't cover it
 
-const SETTING_OPTS = {
-  life: [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['verylong', 'Very long']],
-  every: [[15, '15 min'], [45, '45 min'], [120, '2 hours'], [240, '4 hours'], [1, 'Demo: 1 min']],
-  maxWishes: [[3, '3'], [5, '5'], [8, '8']],
-  labels: [[false, 'Off'], [true, 'On']],
-  jaHint: [[true, 'On'], [false, 'Off']],
-  shop: [[true, 'On'], [false, 'Off']],
-};
 const LIFE_MULT = { short: 0.5, normal: 1, long: 2, verylong: 4 };
 
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-let settings = Object.assign({ life: 'normal', every: 45, maxWishes: 5, labels: false, jaHint: true, shop: true, sound: true, view: 'normal' }, load(SET_KEY, {}));
+const saved = load(SET_KEY, {});
+let settings = { life: 'normal', every: 45, maxWishes: 5, labels: false, shop: true, sound: saved.sound ?? true, view: saved.view || 'normal' };
 let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03', shells: ['shell_13'], shell: 'shell_13' }, load(SHOP_KEY, {}));
 if (!shop.shells) { shop.shells = ['shell_13']; shop.shell = 'shell_13'; }
 let pet = load(SAVE_KEY, null);
@@ -176,18 +169,17 @@ async function hop(n = 2, h = 5) {
 }
 
 // ---------------------------------------------------------------- bubble
-function showBubble(text, { reply = false, ja = '' } = {}) {
+function showBubble(text, { reply = false } = {}) {
   const bub = $('bubble'), t = $('bubbleText');
   bub.classList.remove('hidden', 'pop'); void bub.offsetWidth; bub.classList.add('pop');
   t.classList.toggle('reply', reply);
   t.textContent = text;
-  $('bubbleJa').textContent = ja; $('bubbleJa').classList.toggle('hidden', !ja);
   $('bubbleBtns').classList.toggle('hidden', reply);
 }
 function hideBubble() { $('bubble').classList.add('hidden'); }
 function showNeedBubble() {
   if (!need) return;
-  showBubble(need.en, { ja: need.hinted && settings.jaHint ? need.ja : '' });
+  showBubble(need.en);
   $('hintBtn').classList.toggle('off', need.tries < 1 && !need.hinted);
 }
 async function say(text, ms = 1800, anim = 'cheer') {
@@ -216,7 +208,7 @@ function updateTop() {
 function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; }
 function updateProfile() {
   const box = $('profile');
-  if (!pet || pet.stage === 0 || !pet.name) { box.innerHTML = '<h3>🥚 Tama Talk</h3><div class="prow"><span>Listen to your pet.</span></div><div class="prow"><span>Give it what it wants!</span></div><div class="prow"><span class="ja">ペットの えいごを よんで おせわしよう！</span></div>'; return; }
+  if (!pet || pet.stage === 0 || !pet.name) { box.innerHTML = '<h3>🥚 Tama Talk</h3>'; return; }
   const st = pet.stats?.[pet.stage];
   const care = st && st.asked ? careStars(accuracy(st)) : 0;
   const fav = Object.entries(pet.itemCounts || {}).sort((a, b) => b[1] - a[1])[0];
@@ -476,7 +468,6 @@ async function farewell() {
   const entry = { name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
   const alb = load(ALB_KEY, []); alb.unshift(entry); store(ALB_KEY, alb);
   $('byeEn').textContent = `${pet.name} went to Star Land.`;
-  $('byeJa').textContent = `${pet.name}は ほしの くにへ いったよ。たいせつに そだてて くれて ありがとう！`;
   $('byeStats').textContent = `⭐ ${entry.stars}  ·  💗 ${entry.cares} requests  ·  100 years old`;
   $('byeCard').classList.remove('hidden');
   pet = null; localStorage.removeItem(SAVE_KEY); buildCats(); updateTop();
@@ -709,7 +700,7 @@ $('shopBtn').onclick = () => { renderShop(); openModal('shop'); };
 $('albumBtn').onclick = () => {
   const list = $('albumList'); list.innerHTML = '';
   const alb = load(ALB_KEY, []);
-  if (!alb.length) list.innerHTML = '<div class="empty">No pets yet. <br><small>まだ だれも いないよ</small></div>';
+  if (!alb.length) list.innerHTML = '<div class="empty">No pets yet.</div>';
   for (const e of alb) {
     const d = document.createElement('div'); d.className = 'alb';
     const cv = document.createElement('canvas'); cv.width = cv.height = 32; d.appendChild(cv);
@@ -732,35 +723,10 @@ function applyView() {
 $('viewBtn').onclick = () => { settings.view = settings.view === 'tama' ? 'normal' : 'tama'; store(SET_KEY, settings); applyView(); sfx('shell_button_up.ogg', .5); };
 $('soundBtn').onclick = () => { settings.sound = window.soundOn = !settings.sound; store(SET_KEY, settings); $('soundBtn').textContent = settings.sound ? '🔔' : '🔕'; };
 
-// ---------------------------------------------------------------- settings (hold ⚙ for 1 second)
-let holdT = null;
-$('gearBtn').addEventListener('pointerdown', () => { $('gearBtn').classList.add('holding'); holdT = setTimeout(() => { $('gearBtn').classList.remove('holding'); openSettings(); }, 1000); });
-['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('gearBtn').addEventListener(ev, () => { clearTimeout(holdT); $('gearBtn').classList.remove('holding'); }));
-function openSettings() {
-  document.querySelectorAll('.seg').forEach(seg => {
-    const key = seg.dataset.key; seg.innerHTML = '';
-    for (const [val, label] of SETTING_OPTS[key]) {
-      const b = document.createElement('button'); b.textContent = label;
-      if (settings[key] === val) b.classList.add('on');
-      b.onclick = () => { settings[key] = val; store(SET_KEY, settings); openSettings(); updateTop(); if (need && !busy) showNeedBubble(); };
-      seg.appendChild(b);
-    }
-  });
-  openModal('settings');
-}
 function openModal(id) { $('modalBack').classList.remove('hidden'); document.querySelectorAll('.modal').forEach(m => m.classList.toggle('hidden', m.id !== id)); }
 function closeModal() { $('modalBack').classList.add('hidden'); }
 document.querySelectorAll('.closeModal').forEach(b => b.onclick = closeModal);
 $('modalBack').addEventListener('pointerdown', e => { if (e.target === $('modalBack')) closeModal(); });
-$('resetBtn').onclick = () => openModal('confirm');
-$('confirmNo').onclick = () => openSettings();
-$('confirmYes').onclick = () => {
-  if (pet && pet.stage > 0) { const alb = load(ALB_KEY, []); alb.unshift({ name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, reset: true }); store(ALB_KEY, alb); }
-  localStorage.removeItem(SAVE_KEY); closeModal(); clearTimeout(needTimer);
-  ['nameCard', 'tapEgg', 'byeCard'].forEach(id => $(id).classList.add('hidden'));
-  busy = false; startChoice();
-};
-
 // ---------------------------------------------------------------- boot
 function boot() {
   applyView(); applyShell(); homeBg();

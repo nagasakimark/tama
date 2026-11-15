@@ -22,15 +22,13 @@
     <button id="shopBtn" class="round" title="Shop">🛍️</button>
     <button id="albumBtn" class="round" title="Album">📖</button>
     <button id="soundBtn" class="round" title="Sound effects on/off">🔔</button>
-    <button id="gearBtn" class="round" title="Teacher settings (hold)"><span>⚙️</span><i class="ring"></i></button>
   </header>
 
   <main id="main">
     <section id="talkCol">
       <div id="bubble" class="hidden">
         <div id="bubbleText"></div>
-        <div id="bubbleJa" class="hidden"></div>
-        <div id="bubbleBtns"><button id="hintBtn" class="mini" title="Hint">💡 Hint</button></div>
+                <div id="bubbleBtns"><button id="hintBtn" class="mini" title="Hint">💡 Hint</button></div>
       </div>
     </section>
 
@@ -62,58 +60,38 @@
 
     <div id="eggChoice" class="card hidden">
       <h1>Tama Talk</h1>
-      <p class="ja">たまごを えらんでね！</p>
       <p class="en">Choose an egg!</p>
       <div id="eggRow"></div>
     </div>
     <div id="nameCard" class="card hidden">
       <p class="en">Hello! What's my name?</p>
-      <p class="ja">ペットの なまえを ローマじで かいてね</p>
       <input id="nameInput" maxlength="10" autocomplete="off" spellcheck="false" placeholder="Pochi">
       <button id="nameOk" class="big">OK</button>
     </div>
     <div id="byeCard" class="card hidden">
       <div class="bigstar">🌟</div>
       <p id="byeEn" class="en"></p>
-      <p id="byeJa" class="ja"></p>
       <div id="byeStats"></div>
       <button id="newEggBtn" class="big">New egg 🥚</button>
     </div>
-    <div id="tapEgg" class="hidden"><span class="en">Tap the egg!</span> <span class="ja">たまごを タップ！</span></div>
+    <div id="tapEgg" class="hidden"><span class="en">Tap the egg!</span></div>
   </main>
 
   <nav id="cats"></nav>
   <div id="fxApp"></div>
 
   <div id="modalBack" class="hidden">
-    <div id="settings" class="modal hidden">
-      <h2>⚙️ Teacher settings <small>せんせい よう</small></h2>
-      <div class="row"><label>Life length<br><small>いのちの ながさ</small></label><div class="seg" data-key="life"></div></div>
-      <div class="row"><label>New wish every<br><small>おねがいが ふえる じかん</small></label><div class="seg" data-key="every"></div></div>
-      <div class="row"><label>Most wishes saved up<br><small>おねがいの さいだい</small></label><div class="seg" data-key="maxWishes"></div></div>
-      <div class="row"><label>Words on pictures<br><small>えに ことばを だす</small></label><div class="seg" data-key="labels"></div></div>
-      <div class="row"><label>Japanese hint 💡<br><small>にほんごの ヒント</small></label><div class="seg" data-key="jaHint"></div></div>
-      <div class="row"><label>Shop<br><small>ショップ</small></label><div class="seg" data-key="shop"></div></div>
-      <div class="row"><label>Start over<br><small>さいしょから</small></label><button id="resetBtn" class="danger">Reset pet</button></div>
-      <p class="credit">Pet art, rooms, accessories and sounds: <a href="https://github.com/autosam/Tamaweb" target="_blank" rel="noopener">Tamaweb</a> by autosam (CC BY-NC-SA 4.0).
-        Pets never die from missed care – they only grow old after a long life. The pet saves up wishes while the game is closed, so students can come back after a lesson or a few days.</p>
-      <button class="big closeModal">Close</button>
-    </div>
     <div id="shop" class="modal hidden">
-      <h2>🛍️ Shop <small>ショップ</small> <span class="wallet">⭐ <b id="shopStars">0</b></span></h2>
+      <h2>🛍️ Shop <span class="wallet">⭐ <b id="shopStars">0</b></span></h2>
       <div class="tabs"><button data-tab="acc" class="on">🎩 Accessories</button><button data-tab="room">🏠 Rooms</button><button data-tab="shell">🥚 Shells</button></div>
       <div id="shopGrid"></div>
       <button class="big closeModal">Close</button>
     </div>
     <div id="album" class="modal hidden">
-      <h2>📖 Album <small>アルバム</small></h2>
+      <h2>📖 Album</h2>
       <div id="albumList"></div>
+      <p class="credit">Art &amp; sounds: <a href="https://github.com/autosam/Tamaweb" target="_blank" rel="noopener">Tamaweb</a> by autosam (CC BY-NC-SA 4.0)</p>
       <button class="big closeModal">Close</button>
-    </div>
-    <div id="confirm" class="modal hidden">
-      <h2>Reset? <small>ほんとうに リセットする？</small></h2>
-      <p>This pet will go to the album. <br><small>いまの ペットは アルバムに のこります。</small></p>
-      <div class="btnrow"><button id="confirmYes" class="danger big">Yes</button><button id="confirmNo" class="big">No</button></div>
     </div>
   </div>
 </div>
