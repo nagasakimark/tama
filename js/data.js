@@ -244,5 +244,5 @@ const STAGES = [
   { id: 5, en: 'Senior', ja: 'おじいさん・おばあさん', age: [60, 100] },
 ];
 // cares needed in each stage (×life length setting)
-const STAGE_CARES = [0, 8, 14, 18, 22, 18];
+const STAGE_CARES = [0, 4, 6, 8, 9, 8];   // 35 wishes ≈ one week of daily visits (5 wishes saved up per day)
 
