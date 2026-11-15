@@ -7,7 +7,7 @@
 
 const $ = id => document.getElementById(id);
 const SAVE_KEY = 'tamatalk.save.v1', SET_KEY = 'tamatalk.settings.v1', ALB_KEY = 'tamatalk.album.v1', SHOP_KEY = 'tamatalk.shop.v1';
-const FEET = 88;          // pet stands with its feet here (96×96 screen)
+let FEET = 88;            // pet stands with its feet here (96×96 screen); higher in tama view so the icons don't cover it
 
 const SETTING_OPTS = {
   life: [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['verylong', 'Very long']],
@@ -23,7 +23,8 @@ const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; 
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 let settings = Object.assign({ life: 'normal', pace: 'normal', labels: false, jaHint: true, shop: true, sound: true, view: 'normal' }, load(SET_KEY, {}));
-let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03' }, load(SHOP_KEY, {}));
+let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03', shells: ['shell_13'], shell: 'shell_13' }, load(SHOP_KEY, {}));
+if (!shop.shells) { shop.shells = ['shell_13']; shop.shell = 'shell_13'; }
 let pet = load(SAVE_KEY, null);
 let need = null, busy = false, trayCache = {}, needTimer = null;
 window.soundOn = settings.sound;
@@ -107,8 +108,8 @@ function render(t) {
   if (pet && !view.hidden) {
     // poop
     if (pet.poop && !place) {
-      const p = img('assets/misc/poop.png'); if (p.complete) ctx.drawImage(p, 70, 74 + (Math.floor(t / 400) % 2));
-      const s = img('assets/misc/stinky_01.png'); if (s.complete) { ctx.globalAlpha = .7; ctx.drawImage(s, 0, 0, 16, 16, 70, 60 - (Math.floor(t / 300) % 3), 16, 16); ctx.globalAlpha = 1; }
+      const p = img('assets/misc/poop.png'); if (p.complete) ctx.drawImage(p, 70, FEET - 14 + (Math.floor(t / 400) % 2));
+      const s = img('assets/misc/stinky_01.png'); if (s.complete) { ctx.globalAlpha = .7; ctx.drawImage(s, 0, 0, 16, 16, 70, FEET - 28 - (Math.floor(t / 300) % 3), 16, 16); ctx.globalAlpha = 1; }
     }
     // walking around
     if (!busy && !need && pet.stage > 0 && t > view.walkPause && Math.abs(view.tx - view.x) < 0.5) {
@@ -581,10 +582,14 @@ function renderShop() {
   $('shopStars').textContent = shop.stars;
   document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === shopTab));
   const g = $('shopGrid'); g.innerHTML = '';
-  const list = shopTab === 'acc' ? ACCS : ROOMS;
-  for (const it of list) {
-    const owned = shopTab === 'acc' ? shop.acc.includes(it.id) : shop.rooms.includes(it.id);
-    const on = shopTab === 'acc' ? shop.wearing === it.id : shop.room === it.id;
+  const T = {
+    acc: { list: ACCS, owned: shop.acc, key: 'wearing', verb: 'Wear', toggle: true },
+    room: { list: ROOMS, owned: shop.rooms, key: 'room', verb: 'Use' },
+    shell: { list: SHELLS, owned: shop.shells, key: 'shell', verb: 'Use' },
+  }[shopTab];
+  for (const it of T.list) {
+    const owned = T.owned.includes(it.id) || it.price === 0;
+    const on = shop[T.key] === it.id;
     const d = document.createElement('button');
     d.className = 'sitem' + (owned ? ' owned' : '') + (on ? ' on' : '') + (!owned && shop.stars < it.price ? ' cant' : '');
     if (shopTab === 'acc') {
@@ -598,26 +603,24 @@ function renderShop() {
         if (it.front) drawAcc(c, it.id, 1, r, false);
       };
       const im = img(`assets/acc/${it.id}.png`); if (im.complete) draw(); else im.addEventListener('load', draw);
-    } else {
+    } else if (shopTab === 'room') {
       const t = document.createElement('div'); t.className = 'thumb'; t.style.backgroundImage = `url(${bgSrc(it.id)})`; d.appendChild(t);
+    } else {
+      const t = document.createElement('div'); t.className = 'shellthumb'; t.style.backgroundImage = `url(assets/ui/${it.id}.jpg)`; d.appendChild(t);
     }
-    d.insertAdjacentHTML('beforeend', `<div>${it.en}</div><div class="price">${on ? '✔ ON' : owned ? (shopTab === 'acc' ? 'Wear' : 'Use') : '⭐ ' + it.price}</div>`);
+    d.insertAdjacentHTML('beforeend', `<div>${it.en}</div><div class="price">${on ? '✔ ON' : owned ? T.verb : '⭐ ' + it.price}</div>`);
     d.onclick = () => {
-      if (shopTab === 'acc') {
-        if (owned) shop.wearing = on ? null : it.id;
-        else if (shop.stars >= it.price) { shop.stars -= it.price; shop.acc.push(it.id); shop.wearing = it.id; sfx('task_complete.ogg'); }
-        else { sfx('refuse.ogg', .4); return; }
-      } else {
-        if (owned) shop.room = it.id;
-        else if (shop.stars >= it.price) { shop.stars -= it.price; shop.rooms.push(it.id); shop.room = it.id; sfx('task_complete.ogg'); }
-        else { sfx('refuse.ogg', .4); return; }
-        if (!place) homeBg();
-      }
+      if (owned) shop[T.key] = on && T.toggle ? null : it.id;
+      else if (shop.stars >= it.price) { shop.stars -= it.price; T.owned.push(it.id); shop[T.key] = it.id; sfx('task_complete.ogg'); }
+      else { sfx('refuse.ogg', .4); return; }
+      if (shopTab === 'room' && !place) homeBg();
+      if (shopTab === 'shell') applyShell();
       store(SHOP_KEY, shop); updateTop(); renderShop();
     };
     g.appendChild(d);
   }
 }
+function applyShell() { $('app').style.setProperty('--shell-img', `url(assets/ui/${shop.shell || 'shell_13'}.jpg)`); }
 $('shopBtn').onclick = () => { renderShop(); openModal('shop'); };
 
 // ---------------------------------------------------------------- album
@@ -640,6 +643,7 @@ $('albumBtn').onclick = () => {
 function applyView() {
   const tama = settings.view === 'tama';
   $('app').classList.toggle('tama', tama);
+  FEET = tama ? 80 : 88;
   $('viewIc').textContent = tama ? '🖥️' : '🥚';
   $('viewLb').textContent = tama ? 'Big view' : 'Tama view';
 }
@@ -677,7 +681,7 @@ $('confirmYes').onclick = () => {
 
 // ---------------------------------------------------------------- boot
 function boot() {
-  applyView(); homeBg();
+  applyView(); applyShell(); homeBg();
   $('soundBtn').textContent = settings.sound ? '🔔' : '🔕';
   requestAnimationFrame(render);
   if (!pet) { startChoice(); return; }

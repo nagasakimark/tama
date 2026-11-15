@@ -37,7 +37,6 @@
     <section id="stageCol">
       <div id="shell">
         <div id="shellLogo">Tama Talk</div>
-        <div id="iconsTop" class="icons"></div>
         <div id="screenWrap">
           <div id="screen">
             <div id="bgLayer"></div>
@@ -46,9 +45,10 @@
             <div id="nightLayer" class="hidden"></div>
             <canvas id="fxc" width="96" height="96"></canvas>
           </div>
+          <div id="iconsTop" class="icons"></div>
+          <div id="iconsBot" class="icons"></div>
         </div>
-        <div id="iconsBot" class="icons"></div>
-        <div id="shellBtns"><button data-b="A">A</button><button data-b="B">B</button><button data-b="C">C</button></div>
+        <div id="shellBtns"><button data-b="A" class="left" title="A: next"></button><button data-b="B" class="main" title="B: choose"></button><button data-b="C" class="right" title="C: back"></button></div>
       </div>
     </section>
 
@@ -100,7 +100,7 @@
     </div>
     <div id="shop" class="modal hidden">
       <h2>🛍️ Shop <small>ショップ</small> <span class="wallet">⭐ <b id="shopStars">0</b></span></h2>
-      <div class="tabs"><button data-tab="acc" class="on">🎩 Accessories</button><button data-tab="room">🏠 Rooms</button></div>
+      <div class="tabs"><button data-tab="acc" class="on">🎩 Accessories</button><button data-tab="room">🏠 Rooms</button><button data-tab="shell">🥚 Shells</button></div>
       <div id="shopGrid"></div>
       <button class="big closeModal">Close</button>
     </div>

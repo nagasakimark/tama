@@ -106,3 +106,7 @@ function sfx(name, vol = 0.6) {
     a.volume = vol; a.play().catch(() => {});
   } catch (e) {}
 }
+
+// device shells for the Tamagotchi view (same order as the original)
+const SHELLS = [13, 17, 18, 20, 19, 21, 16, 7, 12, 14, 15, 8, 9, 10, 11, 1, 3, 4, 5, 6]
+  .map((n, i) => ({ id: 'shell_' + String(n).padStart(2, '0'), en: 'Shell ' + (i + 1), price: i === 0 ? 0 : 4 + Math.floor(i / 3) * 2 }));

@@ -148,29 +148,38 @@ button { font-family: inherit; cursor: pointer; border: none; }
 .sitem.on { border-color: #2ab3e6; background: #e2f6ff; }
 .sitem.cant { opacity: .5; }
 
-/* ================= Tamagotchi view ================= */
+/* ================= Tamagotchi view (shell like the original) ================= */
 #app.tama #cats { display: none; }
 #app.tama #main { height: 542px; }
 #app.tama #talkCol { width: 420px; }
-#app.tama #stageCol { width: 470px; }
+#app.tama #stageCol { width: 446px; }
 #app.tama #sideCol { width: 420px; }
-#app.tama #shell { width: 450px; height: 528px; padding-top: 22px; border-radius: 50% 50% 46% 46% / 56% 56% 44% 44%;
-  background: radial-gradient(circle at 30% 25%, #ffd6e8 0 10%, transparent 11%), radial-gradient(circle at 75% 80%, #ffb3d1 0 7%, transparent 8%), radial-gradient(circle at 20% 70%, #ffb3d1 0 5%, transparent 6%), linear-gradient(160deg, #ff8fc0, #ff5fa2);
-  box-shadow: inset -10px -14px 0 rgba(0,0,0,.12), inset 8px 10px 0 rgba(255,255,255,.35), 0 8px 0 #c43c7a; }
-#app.tama #shellLogo { display: block; font-family: 'DotGothic16', monospace; color: #fff; font-size: 22px; letter-spacing: 3px; text-shadow: 2px 2px 0 #c43c7a; margin-bottom: 6px; }
-#app.tama #screenWrap { background: #4a3550; padding: 0 14px; border-radius: 18px; box-shadow: inset 0 4px 0 rgba(0,0,0,.4); }
-#app.tama #screen { width: 288px; height: 288px; border-radius: 4px; filter: grayscale(1) contrast(1.35) brightness(1.08); }
-#app.tama #screenWrap::after { content: ''; position: absolute; left: 14px; right: 14px; top: 0; bottom: 0; pointer-events: none; mix-blend-mode: multiply;
-  background: linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px) 0 0 / 3px 3px, linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px) 0 0 / 3px 3px, #a9bf7a; }
-#app.tama .icons { display: flex; justify-content: space-between; background: #a9bf7a; width: 316px; padding: 4px 8px; }
-#app.tama #iconsTop { border-radius: 14px 14px 0 0; }
-#app.tama #iconsBot { border-radius: 0 0 14px 14px; }
-.icons button { width: 44px; height: 42px; border-radius: 8px; background: transparent; font-size: 28px; line-height: 1; filter: grayscale(1) contrast(1.6) brightness(.75); }
-.icons button.sel { background: #2b3320; filter: grayscale(1) invert(1) contrast(1.4); }
-.icons button.glow { animation: blink .5s infinite alternate; }
-@keyframes blink { to { background: #2b3320; } }
-#app.tama #shellBtns { display: flex; gap: 26px; margin-top: 14px; }
-#shellBtns button { width: 52px; height: 52px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6a8, #ffcf1f 60%, #e0a600); box-shadow: 0 5px 0 #a87800; font-family: 'DotGothic16', monospace; font-size: 20px; color: #7a5200; }
-#shellBtns button:nth-child(2) { transform: translateY(10px); }
-#shellBtns button:active { box-shadow: 0 1px 0 #a87800; translate: 0 4px; }
-#app.tama #bubble::after, #app.tama #bubble::before { top: 40%; }
+#app.tama #shell { position: relative; width: 432px; height: 536px; display: block;
+  background: 50% 50% / cover rgb(255, 237, 217); background-image: var(--shell-img);
+  border-radius: 100% 100% 95% 95%; overflow: hidden;
+  box-shadow: rgba(0,0,0,.333) 26px 26px 42px inset, rgba(255,255,255,.33) -16px -26px 20px inset;
+  filter: drop-shadow(rgba(0,0,0,.18) 4px 10px 18px); }
+#app.tama #shellLogo { display: block; position: absolute; left: 0; right: 0; top: 64px; text-align: center;
+  font-family: 'Fredoka', sans-serif; font-weight: 700; font-size: 38px; letter-spacing: 1px; color: #c9c3c6;
+  -webkit-text-stroke: 2px #6e6670; paint-order: stroke fill; text-shadow: 0 3px 0 #fff, 0 -2px 0 #fff, 3px 0 0 #fff, -3px 0 0 #fff, 0 6px 6px rgba(0,0,0,.25); }
+#app.tama #screenWrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%); padding: 0; border-radius: 6px; background: #000;
+  outline: 6px solid rgba(0,0,0,.25); box-shadow: none; }
+#app.tama #screen { width: 288px; height: 288px; border-radius: 6px; }
+#app.tama .icons { display: flex; position: absolute; left: 0; right: 0; justify-content: space-around; padding: 3px 4px; pointer-events: none; z-index: 5; }
+#app.tama #iconsTop { top: 0; } #app.tama #iconsBot { bottom: 0; }
+.icons button { pointer-events: auto; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.4); font-size: 21px; line-height: 1; position: relative;
+  filter: saturate(1.4); box-shadow: 0 2px 0 rgba(0,0,0,.15); }
+.icons button.sel { background: rgba(255,255,255,.95); box-shadow: 0 0 0 3px #ff7a1a; }
+.icons button.glow { animation: iconGlow .5s infinite alternate; }
+@keyframes iconGlow { to { background: #ffe14a; box-shadow: 0 0 0 4px #ffe14a; } }
+#app.tama #shellBtns { display: block; }
+#shellBtns button { position: absolute; width: 44px; height: 44px; border-radius: 50%;
+  background: var(--shell-img) 0% 0% / 600px, linear-gradient(180deg, #f7f7f7, #fff);
+  box-shadow: 0 9px 6px -4px rgba(0,0,0,.4), inset -6px -8px 6px -3px rgba(0,0,0,.36), inset 6px 8px 6px -3px rgba(255,255,255,.36); filter: brightness(.92); }
+#shellBtns button::before { content: ''; position: absolute; inset: 0; border-radius: 50%; scale: 1.18; z-index: -1; background: radial-gradient(transparent 60%, rgba(0,0,0,.6) 100%); }
+#shellBtns button:active { box-shadow: none; transform: translateY(2px); }
+#shellBtns .main { left: calc(50% - 22px); bottom: 7%; }
+#shellBtns .left { left: calc(50% - 22px - 88px); bottom: 11%; }
+#shellBtns .right { left: calc(50% - 22px + 88px); bottom: 11%; }
+#app.tama #bubble::after, #app.tama #bubble::before { top: 46%; }
+.sitem .shellthumb { width: 96px; height: 96px; display: block; margin: 0 auto; border-radius: 48px 48px 44px 44px; background-size: cover; box-shadow: inset 6px 6px 10px rgba(0,0,0,.25); }
