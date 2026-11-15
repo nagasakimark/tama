@@ -52,7 +52,6 @@ button { font-family: inherit; cursor: pointer; border: none; }
 #bubble::after { content: ''; position: absolute; bottom: -26px; left: var(--tail, 200px); border: 14px solid transparent; border-top: 18px solid #3a2a14; }
 #bubble::before { content: ''; position: absolute; bottom: -17px; left: calc(var(--tail, 200px) + 4px); border: 10px solid transparent; border-top: 13px solid #fff; z-index: 1; }
 #bubbleText { font-size: 38px; font-weight: 600; line-height: 1.2; }
-#bubbleText.listen { color: #ff7a1a; }
 #bubbleText.reply { color: #e0457b; }
 #bubbleJa { font-size: 22px; color: #1d8fc4; margin-top: 6px; font-weight: 800; }
 #bubbleBtns { display: flex; gap: 8px; margin-top: 10px; }

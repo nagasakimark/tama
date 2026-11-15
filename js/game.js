@@ -12,10 +12,8 @@ const SAVE_KEY = 'tamatalk.save.v1', SET_KEY = 'tamatalk.settings.v1', ALB_KEY =
 const SETTING_OPTS = {
   life: [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['verylong', 'Very long']],
   pace: [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']],
-  showText: [[true, 'Read 👀'], [false, 'Listen 👂']],
   labels: [[false, 'Off'], [true, 'On']],
   jaHint: [[true, 'On'], [false, 'Off']],
-  voice: [[true, 'On'], [false, 'Off']],
 };
 const LIFE_MULT = { short: 0.5, normal: 1, long: 2, verylong: 4 };
 const PACE = { fast: [900, 1800], normal: [2500, 5000], slow: [7000, 12000] };
@@ -23,7 +21,7 @@ const PACE = { fast: [900, 1800], normal: [2500, 5000], slow: [7000, 12000] };
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-let settings = Object.assign({ life: 'normal', pace: 'normal', showText: true, labels: false, jaHint: true, voice: true }, load(SET_KEY, {}));
+let settings = Object.assign({ life: 'normal', pace: 'normal', labels: false, jaHint: true }, load(SET_KEY, {}));
 let pet = load(SAVE_KEY, null);
 let need = null;            // current request
 let busy = false;           // animation in progress
@@ -120,23 +118,6 @@ async function hop(n = 2, h = 4) {
 }
 function setFace(f, ms = 1500) { view.face = f; view.faceUntil = performance.now() + ms; }
 
-// ---------------------------------------------------------------- speech
-let voices = [];
-function pickVoice() {
-  voices = speechSynthesis.getVoices();
-  return voices.find(v => /Google US English/i.test(v.name)) || voices.find(v => v.lang === 'en-US') || voices.find(v => /^en/i.test(v.lang));
-}
-if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = pickVoice;
-function speak(text, slow) {
-  if (!settings.voice || !('speechSynthesis' in window)) return;
-  speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance(text.replace(/P\.E\./g, 'P E'));
-  const v = pickVoice(); if (v) u.voice = v;
-  u.lang = 'en-US'; u.rate = slow ? 0.6 : 0.92; u.pitch = pet && pet.stage >= 4 ? 1.1 : 1.5;
-  if (pet && pet.stage === 5) { u.pitch = 0.9; u.rate *= 0.9; }
-  speechSynthesis.speak(u);
-}
-
 // ---------------------------------------------------------------- bubble
 function tailToPet() {
   const bub = $('bubble');
@@ -147,11 +128,11 @@ function tailToPet() {
   bub.style.left = left + 'px';
   bub.style.setProperty('--tail', Math.max(26, Math.min(bub.offsetWidth - 60, cx - left - 14)) + 'px');
 }
-function showBubble(text, { reply = false, ja = '', listen = false } = {}) {
+function showBubble(text, { reply = false, ja = '' } = {}) {
   const bub = $('bubble'), t = $('bubbleText');
   bub.classList.remove('hidden', 'pop'); void bub.offsetWidth; bub.classList.add('pop');
-  t.classList.toggle('reply', reply); t.classList.toggle('listen', listen);
-  t.textContent = listen ? '👂 Listen!' : text;
+  t.classList.toggle('reply', reply);
+  t.textContent = text;
   $('bubbleJa').textContent = ja; $('bubbleJa').classList.toggle('hidden', !ja);
   $('bubbleBtns').classList.toggle('hidden', reply);
   tailToPet();
@@ -159,13 +140,12 @@ function showBubble(text, { reply = false, ja = '', listen = false } = {}) {
 function hideBubble() { $('bubble').classList.add('hidden'); }
 function showNeedBubble() {
   if (!need) return;
-  const reveal = settings.showText || need.tries >= 2;
   const ja = need.hinted && settings.jaHint ? need.ja : '';
-  showBubble(need.en, { ja, listen: !reveal });
+  showBubble(need.en, { ja });
   $('hintBtn').classList.toggle('off', need.tries < 1 && !need.hinted);
 }
 async function say(text, ms = 1800, face = 'talk') {
-  showBubble(text, { reply: true }); speak(text); setFace(face, ms); await sleep(ms);
+  showBubble(text, { reply: true }); setFace(face, ms); await sleep(ms);
 }
 
 // ---------------------------------------------------------------- UI: top + categories
@@ -324,11 +304,10 @@ async function wrong(it, fromRect) {
   if (it.id !== 'hug' && it.cat !== 'sleep') await flyEmoji(it.e, fromRect);
   view.shake = 6; setFace('no', 1700);
   const reply = (need.avoid && need.avoid[it.id]) || rnd(NO_THANKS);
-  showBubble(reply, { reply: true }); speak(reply);
+  showBubble(reply, { reply: true });
   await sleep(1700);
   if (need.tries >= 3 && !need.hinted) { need.hinted = true; glowCats(true); }
   showNeedBubble();
-  if (need.tries === 2 && !settings.showText) speak(need.en);
 }
 
 async function success(it, fromRect) {
@@ -346,7 +325,7 @@ async function success(it, fromRect) {
     $('outing').classList.add('hidden');
   } else if (cat === 'sleep') {
     $('night').classList.remove('hidden'); hideBubble(); setFace('sleep', 3200);
-    speak('Good night.');
+   
     await sleep(3200);
     $('night').classList.add('hidden');
     await hop(1, 3);
@@ -378,7 +357,7 @@ async function success(it, fromRect) {
   hideBubble();
   save(); updateTop();
   await checkGrowth();
-  if (need) { showNeedBubble(); speak(need.en); }
+  if (need) { showNeedBubble(); }
   else if (pet && pet.stage > 0) scheduleNeed();
 }
 
@@ -409,12 +388,12 @@ async function farewell() {
   busy = true; setCatsEnabled(false); clearTimeout(needTimer); closeTray();
   view.tx = view.x = 60;
   await say("I'm 100 years old now.", 2400, 'happy');
-  await say(`I had a very happy life. Thank you, ${pet.owner || 'friend'}!`, 3200, 'happy');
+  await say(`I had a very happy life. Thank you for everything!`, 3200, 'happy');
   await say('Goodbye! See you!', 2400, 'happy');
   hideBubble();
   view.halo = true; setFace('happy', 9000);
   for (let i = 0; i < 70; i++) { view.float += 0.45; view.alpha = Math.max(0, 1 - i / 70); if (i % 10 === 0) floaters('✨', 2); await sleep(45); }
-  const entry = { name: pet.name, owner: pet.owner, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
+  const entry = { name: pet.name, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
   const alb = load(ALB_KEY, []); alb.unshift(entry); store(ALB_KEY, alb);
   $('byeEn').textContent = `${pet.name} went to Star Land.`;
   $('byeJa').textContent = `${pet.name}は ほしの くにへ いったよ。たいせつに そだてて くれて ありがとう！`;
@@ -439,14 +418,12 @@ function newNeed() {
   if (need.poop) pet.poop = true;
   trayCache = {};
   view.tx = 46;
-  showNeedBubble(); speak(need.en);
+  showNeedBubble();
   save();
 }
 
-$('sayBtn').onclick = () => need && speak(need.en);
-$('slowBtn').onclick = () => need && speak(need.en, true);
 $('hintBtn').onclick = () => {
-  if (!need || (need.tries < 1 && !need.hinted)) { if (need) { $('hintBtn').classList.add('pop'); speak(need.en); } return; }
+  if (!need || (need.tries < 1 && !need.hinted)) return;
   need.hinted = true; glowCats(true); showNeedBubble();
 };
 
@@ -480,7 +457,7 @@ function startChoice() {
 }
 function chooseEgg(color) {
   $('eggChoice').classList.add('hidden');
-  pet = { v: 1, color, stage: 0, progress: 0, eggTaps: 0, stars: 0, cares: 0, catCounts: {}, seenCats: [], born: null, name: '', owner: '' };
+  pet = { v: 1, color, stage: 0, progress: 0, eggTaps: 0, stars: 0, cares: 0, catCounts: {}, seenCats: [], born: null, name: '' };
   view.x = view.tx = 60;
   save(); updateTop();
   $('tapEgg').classList.remove('hidden');
@@ -504,13 +481,11 @@ async function tapEgg() {
 
 function askName() {
   busy = true;
-  const card = $('nameCard'), inp = $('nameInput');
-  const step = pet.name ? 'owner' : 'pet';
-  $('nameQ').textContent = step === 'pet' ? "Hello! What's my name?" : "What's your name?";
-  $('nameJa').textContent = step === 'pet' ? 'ペットの なまえを ローマじで かいてね' : 'きみの なまえを ローマじで かいてね';
-  inp.value = ''; inp.placeholder = step === 'pet' ? 'Pochi' : 'Ken';
-  card.classList.remove('hidden'); setTimeout(() => inp.focus(), 50);
-  speak($('nameQ').textContent);
+  const inp = $('nameInput');
+  $('nameQ').textContent = "Hello! What's my name?";
+  $('nameJa').textContent = 'ペットの なまえを ローマじで かいてね';
+  inp.value = ''; inp.placeholder = 'Pochi';
+  $('nameCard').classList.remove('hidden'); setTimeout(() => inp.focus(), 50);
 }
 $('nameInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^A-Za-z \-]/g, ''); });
 $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nameOk').click(); });
@@ -519,11 +494,10 @@ $('nameOk').onclick = async () => {
   if (!v) { $('nameInput').focus(); return; }
   v = v.charAt(0).toUpperCase() + v.slice(1);
   $('nameCard').classList.add('hidden');
-  if (!pet.name) { pet.name = v; save(); updateTop(); await say(`My name is ${v}!`, 1800, 'happy'); askName(); return; }
-  pet.owner = v; save();
+  pet.name = v; save(); updateTop();
   const d = new Date(pet.born);
   const month = d.toLocaleString('en-US', { month: 'long' });
-  await say(`Nice to meet you, ${v}!`, 2000, 'happy');
+  await say(`My name is ${v}! Nice to meet you!`, 2200, 'happy');
   await say(`My birthday is ${month} ${d.getDate()}.`, 2400, 'happy');
   hideBubble(); busy = false;
   buildCats(); setCatsEnabled(true);
@@ -576,8 +550,7 @@ function openSettings() {
   });
   openModal('settings');
 }
-function applySettings() { $('voiceBtn').textContent = settings.voice ? '🔊' : '🔇'; if (need && !busy) showNeedBubble(); }
-$('voiceBtn').onclick = () => { settings.voice = !settings.voice; store(SET_KEY, settings); applySettings(); if (!settings.voice) speechSynthesis.cancel(); };
+function applySettings() { if (need && !busy) showNeedBubble(); }
 function openModal(id) { $('modalBack').classList.remove('hidden'); document.querySelectorAll('.modal').forEach(m => m.classList.toggle('hidden', m.id !== id)); }
 function closeModal() { $('modalBack').classList.add('hidden'); }
 document.querySelectorAll('.closeModal').forEach(b => b.onclick = closeModal);
@@ -585,7 +558,7 @@ $('modalBack').addEventListener('pointerdown', e => { if (e.target === $('modalB
 $('resetBtn').onclick = () => openModal('confirm');
 $('confirmNo').onclick = () => openSettings();
 $('confirmYes').onclick = () => {
-  if (pet && pet.stage > 0) { const alb = load(ALB_KEY, []); alb.unshift({ name: pet.name, owner: pet.owner, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, reset: true }); store(ALB_KEY, alb); }
+  if (pet && pet.stage > 0) { const alb = load(ALB_KEY, []); alb.unshift({ name: pet.name, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, reset: true }); store(ALB_KEY, alb); }
   localStorage.removeItem(SAVE_KEY); closeModal(); clearTimeout(needTimer);
   $('nameCard').classList.add('hidden'); $('tapEgg').classList.add('hidden'); $('byeCard').classList.add('hidden');
   busy = false; startChoice();
@@ -599,12 +572,12 @@ function boot() {
   view.x = view.tx = 46;
   updateTop(); buildCats();
   if (pet.stage === 0) { $('tapEgg').classList.remove('hidden'); setCatsEnabled(false); return; }
-  if (!pet.name || !pet.owner) { askName(); return; }
+  if (!pet.name) { askName(); return; }
   // welcome back – nothing bad happened while away
   busy = true; setCatsEnabled(false);
   (async () => {
     await sleep(500);
-    await say(pet.owner ? `Hello, ${pet.owner}! I missed you!` : 'Hello!', 2000, 'happy');
+    await say('Hello! I missed you!', 2000, 'happy');
     hideBubble(); busy = false; setCatsEnabled(true); scheduleNeed(1200);
   })();
 }
