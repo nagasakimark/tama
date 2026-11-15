@@ -11,18 +11,19 @@ let FEET = 88;            // pet stands with its feet here (96×96 screen); high
 
 const SETTING_OPTS = {
   life: [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['verylong', 'Very long']],
-  pace: [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']],
+  every: [[15, '15 min'], [45, '45 min'], [120, '2 hours'], [240, '4 hours'], [1, 'Demo: 1 min']],
+  maxWishes: [[3, '3'], [5, '5'], [8, '8']],
   labels: [[false, 'Off'], [true, 'On']],
   jaHint: [[true, 'On'], [false, 'Off']],
   shop: [[true, 'On'], [false, 'Off']],
 };
 const LIFE_MULT = { short: 0.5, normal: 1, long: 2, verylong: 4 };
-const PACE = { fast: [900, 1800], normal: [2500, 5000], slow: [7000, 12000] };
+
 
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-let settings = Object.assign({ life: 'normal', pace: 'normal', labels: false, jaHint: true, shop: true, sound: true, view: 'normal' }, load(SET_KEY, {}));
+let settings = Object.assign({ life: 'normal', every: 45, maxWishes: 5, labels: false, jaHint: true, shop: true, sound: true, view: 'normal' }, load(SET_KEY, {}));
 let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03', shells: ['shell_13'], shell: 'shell_13' }, load(SHOP_KEY, {}));
 if (!shop.shells) { shop.shells = ['shell_13']; shop.shell = 'shell_13'; }
 let pet = load(SAVE_KEY, null);
@@ -212,6 +213,7 @@ function updateTop() {
   $('growFill').style.width = pet.stage === 0 ? '0%' : Math.min(100, pet.progress / stageReq(pet.stage) * 100) + '%';
   updateProfile();
 }
+function fmtMin(m) { return m >= 60 ? Math.floor(m / 60) + ' h ' + (m % 60) + ' min' : m + ' min'; }
 function updateProfile() {
   const box = $('profile');
   if (!pet || pet.stage === 0 || !pet.name) { box.innerHTML = '<h3>🥚 Tama Talk</h3><div class="prow"><span>Listen to your pet.</span></div><div class="prow"><span>Give it what it wants!</span></div><div class="prow"><span class="ja">ペットの えいごを よんで おせわしよう！</span></div>'; return; }
@@ -225,7 +227,8 @@ function updateProfile() {
     <div class="prow"><span>Age</span><span>${age()} · ${STAGES[pet.stage].en}</span></div>
     <div class="prow"><span>English care</span><span class="care">${care ? '★'.repeat(care) + '☆'.repeat(3 - care) : '–'}</span></div>
     <div class="prow"><span>Favorite</span><span>${fav ? ITEM[fav[0]].e + ' ' + ITEM[fav[0]].en : '–'}</span></div>
-    <div class="prow"><span>${pet.stage === 5 ? 'Life' : 'Next stage'}</span><span>${left} more 💗</span></div>`;
+    <div class="prow"><span>${pet.stage === 5 ? 'Life' : 'Next stage'}</span><span>${left} more 💗</span></div>
+    <div class="prow"><span>Wishes</span><span>${pet.wishes > 0 ? '💭 ' + pet.wishes : 'Next in ' + fmtMin(nextWishIn())}</span></div>`;
   const pc = $('profPic').getContext('2d'); pc.imageSmoothingEnabled = false;
   const im = img(charSrc(pet.sprite)); const cs = cell();
   const draw = () => { pc.clearRect(0, 0, 32, 32); drawCell(pc, im, 1, cs, (32 - cs) / 2, 32 - cs, false); };
@@ -354,7 +357,7 @@ async function give(it, fromRect) {
     if (it.id === 'hug') { sfx('cute.ogg'); burst('heart', 4); setAnim('blush', 1500); await hop(1, 3); await say(rnd(["Hehe! I'm happy!", 'I like you!', 'Hehe!']), 1500, 'blush'); }
     else if (it.id === 'cleanup' && pet.poop) { pet.poop = false; save(); burst('twinkle', 3); await say('Thank you!', 1300); }
     else { await flyEmoji(it.e, fromRect); sfx('refuse.ogg', .4); await say(rnd(["I'm OK. Thank you!", 'No, thank you. Maybe later!']), 1600, 'idle'); }
-    hideBubble(); finishBusy(); scheduleNeed(); return;
+    hideBubble(); finishBusy(); return;
   }
   if (need.ok.includes(it.id)) await success(it, fromRect); else await wrong(it, fromRect);
   finishBusy();
@@ -430,11 +433,12 @@ async function success(it, fromRect) {
   st.asked++; if (firstTry) st.first++;
   pet.itemCounts = pet.itemCounts || {}; pet.itemCounts[it.id] = (pet.itemCounts[it.id] || 0) + 1;
   pet.progress++;
+  if (!wasBirthday) pet.wishes = Math.max(0, (pet.wishes || 1) - 1);
   need = null; trayCache = {};
   hideBubble(); save(); updateTop();
   await checkGrowth();
   if (need) showNeedBubble();
-  else if (pet && pet.stage > 0) scheduleNeed();
+  else if (pet && pet.stage > 0) { accrue(); if (pet.wishes > 0) scheduleNeed(); else await allDone(); }
 }
 
 // ---------------------------------------------------------------- growth & old age
@@ -481,20 +485,97 @@ async function farewell() {
 }
 $('newEggBtn').onclick = () => { $('byeCard').classList.add('hidden'); startChoice(); };
 
-// ---------------------------------------------------------------- requests
+// ---------------------------------------------------------------- requests (based on real time)
+// The pet saves up one wish every `settings.every` minutes – also while the game is closed –
+// up to `settings.maxWishes`. When all wishes are done it is happy and leaves you alone.
+const MIN = 60000;
+function accrue() {
+  if (!pet || pet.stage === 0 || !pet.name) return;
+  const now = Date.now(), step = settings.every * MIN;
+  if (!pet.wishAt) { pet.wishAt = now; pet.wishes = pet.wishes ?? 3; }
+  const n = Math.floor((now - pet.wishAt) / step);
+  if (n > 0) {
+    pet.wishes = Math.min(settings.maxWishes, (pet.wishes || 0) + n);
+    pet.wishAt = pet.wishes >= settings.maxWishes ? now : pet.wishAt + n * step;
+  }
+  if (pet.wishes >= settings.maxWishes) pet.wishAt = now; // full: the clock waits
+}
+function nextWishIn() { if (!pet.wishAt) return settings.every; return Math.max(0, Math.ceil((pet.wishAt + settings.every * MIN - Date.now()) / MIN)); }
 function scheduleNeed(ms) {
   clearTimeout(needTimer);
   if (!pet || pet.stage === 0) return;
-  const [a, b] = PACE[settings.pace];
-  needTimer = setTimeout(newNeed, ms ?? (a + Math.random() * (b - a)));
+  needTimer = setTimeout(newNeed, ms ?? 1500 + Math.random() * 2000);
 }
-function newNeed() {
-  if (busy || need || !pet || pet.stage === 0) return;
+async function newNeed() {
+  if (busy || need || !pet || pet.stage === 0 || !pet.name) return;
+  accrue();
+  if (!(pet.wishes > 0)) { updateProfile(); return; }
   need = makeNeed(pet.stage);
   if (need.poop) pet.poop = true;
   trayCache = {}; view.tx = 48;
   showNeedBubble(); sfx('pop_01.mp3', .4);
   save();
+}
+async function allDone() {
+  busy = true; setCatsEnabled(false);
+  await say(rnd(["Thank you! I'm happy now. See you later!", "I'm happy! See you later!", 'Thank you! Bye-bye! See you soon!']), 2400);
+  hideBubble(); busy = false; setCatsEnabled(true); updateProfile();
+}
+// check the clock while the game is open
+setInterval(() => {
+  if (!pet || pet.stage === 0 || !pet.name) return;
+  const had = pet.wishes || 0; accrue();
+  if (pet.wishes !== had) save();
+  if (!need && !busy && pet.wishes > 0) newNeed();
+  updateProfile();
+}, 20000);
+function markSeenTime() { if (pet) { pet.lastSeen = Date.now(); save(); } }
+document.addEventListener('visibilitychange', () => { if (document.hidden) markSeenTime(); else if (pet && pet.name && !busy) welcomeBack(); });
+window.addEventListener('pagehide', markSeenTime);
+setInterval(markSeenTime, 30000);
+
+// what the pet says when you come back
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Hello!' : h < 11 ? 'Good morning!' : h < 17 ? 'Hello!' : 'Good evening!';
+}
+function diaryLine(stage) {
+  const pick = c => rnd(byCat(c));
+  const opts = [() => `I ate ${pick('food').a}.`, () => `I played ${rnd(byCat('play').filter(i => i.sport)).en}.`];
+  if (stage >= 2) opts.push(() => pick('fun').done);
+  if (stage >= 3) opts.push(() => `I went to ${pick('go').en}.`, () => `I studied ${pick('study').en}.`);
+  return rnd(opts)() + ' ' + rnd(['It was fun!', 'It was great!', 'I enjoyed it!']);
+}
+let welcoming = false;
+async function welcomeBack() {
+  if (welcoming || !pet || pet.stage === 0) return;
+  const away = Date.now() - (pet.lastSeen || Date.now());
+  if (away < 10 * MIN) { // only a short break – carry on quietly
+    pet.lastSeen = Date.now(); accrue(); save(); updateProfile();
+    if (!need && !busy && pet.wishes > 0) scheduleNeed(800);
+    return;
+  }
+  welcoming = true; busy = true; setCatsEnabled(false); clearTimeout(needTimer);
+  need = null; hideBubble();
+  accrue(); save(); updateTop();
+  const hours = away / (60 * MIN), days = Math.floor(hours / 24);
+  if (away >= 10 * MIN) {
+    await say(greeting() + (hours >= 2 ? ' I missed you!' : ''), 2000);
+    if (days >= 2) await say(`It's been ${days} days!`, 1800, 'shocked');
+    if (days >= 1) await say(`Yesterday, ${diaryLine(pet.stage).replace(/^I/, 'I')}`, 3000);
+    else if (hours >= 2) await say(`Today, ${diaryLine(pet.stage)}`, 3000);
+    if (days >= 1) { // a small present for coming back
+      const gift = Math.min(3, days);
+      shop.stars += gift; store(SHOP_KEY, shop); updateTop(); burst('star', gift); sfx('task_complete.ogg', .5);
+      await say(`I found ${gift} star${gift > 1 ? 's' : ''} for you!`, 2000);
+    }
+    if (hours >= 8 && !pet.poop) pet.poop = true;
+  }
+  if (pet.wishes > 0) await say(pet.wishes > 1 ? `I have ${pet.wishes} wishes today!` : 'I have a wish!', 1800);
+  else await say(`I'm happy! Come back later.`, 1800);
+  pet.lastSeen = Date.now(); save();
+  hideBubble(); busy = false; welcoming = false; setCatsEnabled(true);
+  if (pet.wishes > 0) scheduleNeed(800);
 }
 $('hintBtn').onclick = () => {
   if (!need || (need.tries < 1 && !need.hinted)) return;
@@ -569,6 +650,7 @@ $('nameOk').onclick = async () => {
   await say(`My name is ${v}! Nice to meet you!`, 2200);
   await say(`My birthday is ${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}.`, 2400);
   hideBubble(); busy = false;
+  pet.wishes = 3; pet.wishAt = Date.now(); pet.lastSeen = Date.now(); save();
   buildCats(); setCatsEnabled(true); updateTop();
   scheduleNeed(1500);
 };
@@ -689,11 +771,8 @@ function boot() {
   updateTop(); buildCats();
   if (pet.stage === 0) { $('tapEgg').classList.remove('hidden'); setCatsEnabled(false); return; }
   if (!pet.name) { askName(); return; }
-  busy = true; setCatsEnabled(false);
-  (async () => {
-    await sleep(500);
-    await say('Hello! I missed you!', 2000);
-    hideBubble(); busy = false; setCatsEnabled(true); scheduleNeed(1200);
-  })();
+  if (!pet.lastSeen) pet.lastSeen = Date.now() - 11 * MIN;
+  if (pet.wishes === undefined) { pet.wishes = 3; pet.wishAt = Date.now(); }
+  setTimeout(welcomeBack, 500);
 }
 boot();
