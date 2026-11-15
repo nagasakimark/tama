@@ -246,21 +246,3 @@ const STAGES = [
 // cares needed in each stage (×life length setting)
 const STAGE_CARES = [0, 8, 14, 18, 22, 18];
 
-// Adult "type", decided by what you did most as a child/teen
-const FORMS = {
-  food:  { en: 'Foodie', acc: 'chef', line: 'I like food!' },
-  play:  { en: 'Sporty', acc: 'band', line: 'I like sports!' },
-  study: { en: 'Smart',  acc: 'glasses', line: 'I like studying!' },
-  go:    { en: 'Explorer', acc: 'explorer', line: 'I like going out!' },
-  fun:   { en: 'Star',   acc: 'bow', line: 'I like singing and dancing!' },
-  care:  { en: 'Sweet',  acc: 'flower', line: 'I like you!' },
-};
-const FORM_OF_CAT = { food: 'food', drink: 'food', play: 'play', study: 'study', go: 'go', trip: 'go', fun: 'fun', wear: 'care', clean: 'care', sleep: 'care', hug: 'care' };
-
-const COLORS = {
-  pink:   { body: '#ff9ec4', light: '#ffd3e5', shade: '#e8709f', line: '#8a2f55' },
-  sky:    { body: '#7fd0ff', light: '#c9ecff', shade: '#4aa8e0', line: '#1f4f7a' },
-  yellow: { body: '#ffd84a', light: '#fff1a8', shade: '#f0ad1c', line: '#7a5200' },
-  green:  { body: '#8ee06a', light: '#cff5b8', shade: '#5bb83e', line: '#2a5e1b' },
-  orange: { body: '#ffa65c', light: '#ffd8b0', shade: '#ee7d2b', line: '#7d3a0b' },
-};

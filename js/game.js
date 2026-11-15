@@ -6,14 +6,15 @@
 // ============================================================
 
 const $ = id => document.getElementById(id);
-const W = 136, H = 42, FLOOR = 31, PX = 10;
-const SAVE_KEY = 'tamatalk.save.v1', SET_KEY = 'tamatalk.settings.v1', ALB_KEY = 'tamatalk.album.v1';
+const SAVE_KEY = 'tamatalk.save.v1', SET_KEY = 'tamatalk.settings.v1', ALB_KEY = 'tamatalk.album.v1', SHOP_KEY = 'tamatalk.shop.v1';
+const FEET = 88;          // pet stands with its feet here (96×96 screen)
 
 const SETTING_OPTS = {
   life: [['short', 'Short'], ['normal', 'Normal'], ['long', 'Long'], ['verylong', 'Very long']],
   pace: [['fast', 'Fast'], ['normal', 'Normal'], ['slow', 'Slow']],
   labels: [[false, 'Off'], [true, 'On']],
   jaHint: [[true, 'On'], [false, 'Off']],
+  shop: [[true, 'On'], [false, 'Off']],
 };
 const LIFE_MULT = { short: 0.5, normal: 1, long: 2, verylong: 4 };
 const PACE = { fast: [900, 1800], normal: [2500, 5000], slow: [7000, 12000] };
@@ -21,113 +22,158 @@ const PACE = { fast: [900, 1800], normal: [2500, 5000], slow: [7000, 12000] };
 const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
-let settings = Object.assign({ life: 'normal', pace: 'normal', labels: false, jaHint: true }, load(SET_KEY, {}));
+let settings = Object.assign({ life: 'normal', pace: 'normal', labels: false, jaHint: true, shop: true, sound: true, view: 'normal' }, load(SET_KEY, {}));
+let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03' }, load(SHOP_KEY, {}));
 let pet = load(SAVE_KEY, null);
-let need = null;            // current request
-let busy = false;           // animation in progress
-let trayCache = {};         // stable tray contents per request
-let needTimer = null;
+let need = null, busy = false, trayCache = {}, needTimer = null;
+window.soundOn = settings.sound;
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
+// old saves (before the real artwork) get a character
+if (pet && pet.stage > 0 && !pet.sprite) pet.sprite = rnd(CHARS[STAGE_KEY[pet.stage]]);
+
 // ---------------------------------------------------------------- scaling
+let appScale = 1;
 function fit() {
-  const s = Math.min(window.innerWidth / 1380, window.innerHeight / 612);
-  $('app').style.transform = `translate(-50%, -50%) scale(${s})`;
+  appScale = Math.min(window.innerWidth / 1380, window.innerHeight / 612);
+  $('app').style.transform = `translate(-50%, -50%) scale(${appScale})`;
 }
 window.addEventListener('resize', fit); fit();
 
-// ---------------------------------------------------------------- canvas
-const bg = $('bg').getContext('2d'), fg = $('fg').getContext('2d');
-bg.imageSmoothingEnabled = fg.imageSmoothingEnabled = false;
+// ---------------------------------------------------------------- scene state
+const ctx = $('pet').getContext('2d'), fx = $('fxc').getContext('2d');
+ctx.imageSmoothingEnabled = fx.imageSmoothingEnabled = false;
+const view = { x: 48, tx: 48, jump: 0, flip: false, anim: null, animUntil: 0, wobble: 0, float: 0, alpha: 1, flash: 0, halo: false, walkPause: 0, hidden: false };
+let particles = [];
+let place = null; // current activity background
 
-const view = { x: 46, tx: 46, jump: 0, shake: 0, face: 'normal', faceUntil: 0, blinkAt: 0, wobble: 0, float: 0, halo: false, alpha: 1, flash: 0, walkPause: 0 };
+function setBg(id) { $('bgLayer').style.backgroundImage = `url(${bgSrc(id)})`; }
+function homeBg() { setBg(shop.room || 'home_03'); $('emojiLayer').innerHTML = ''; place = null; }
+function goPlace(bg, emoji) {
+  setBg(bg); place = bg;
+  $('emojiLayer').innerHTML = emoji ? `<span>${emoji}</span>` : '';
+}
+function setAnim(name, ms = 1200) { view.anim = name; view.animUntil = performance.now() + ms; }
 
-function petSprite() { return pet && pet.stage > 0 ? SPR[pet.stage] : SPR.egg; }
-function petBox() { // scene-pixel bounding box of the pet
-  const m = petSprite().map, { w, h } = mapSize(m);
-  const x = Math.round(view.x - w / 2), y = FLOOR + 6 - h - Math.round(view.jump) - Math.round(view.float);
-  return { x, y, w, h };
+function cell() { return CELL[pet.stage] || 16; }
+function petRect() {
+  if (pet.stage === 0) return { x: Math.round(view.x - 8), y: FEET - 16, w: 16, h: 16 };
+  const cs = cell();
+  return { x: Math.round(view.x - cs / 2), y: Math.round(FEET - cs - view.jump - view.float), w: cs, h: cs };
+}
+
+// white silhouette for the "growing" flash
+const tmp = document.createElement('canvas'); tmp.width = tmp.height = 64;
+const tctx = tmp.getContext('2d'); tctx.imageSmoothingEnabled = false;
+
+function drawCell(c, im, cellNo, cs, x, y, flip, white) {
+  if (!im.complete || !im.naturalWidth) return;
+  const i = cellNo - 1, sx = (i % 4) * cs, sy = Math.floor(i / 4) * cs;
+  let src = im, ssx = sx, ssy = sy;
+  if (white) {
+    tctx.clearRect(0, 0, 64, 64); tctx.globalCompositeOperation = 'source-over';
+    tctx.drawImage(im, sx, sy, cs, cs, 0, 0, cs, cs);
+    tctx.globalCompositeOperation = 'source-atop'; tctx.fillStyle = '#fff'; tctx.fillRect(0, 0, 64, 64);
+    tctx.globalCompositeOperation = 'source-over';
+    src = tmp; ssx = 0; ssy = 0;
+  }
+  c.save();
+  if (flip) { c.translate(x + cs, y); c.scale(-1, 1); c.drawImage(src, ssx, ssy, cs, cs, 0, 0, cs, cs); }
+  else c.drawImage(src, ssx, ssy, cs, cs, x, y, cs, cs);
+  c.restore();
+}
+function drawAcc(c, accId, cellNo, r, flip) {
+  const im = img(`assets/acc/${accId}.png`);
+  if (!im.complete || !im.naturalWidth) return;
+  const k = r.w / 32, size = 64 * k, i = cellNo - 1;
+  const dx = r.x + r.w / 2 - size / 2, dy = r.y + r.h / 2 - size / 2;
+  c.save();
+  if (flip) { c.translate(dx + size, dy); c.scale(-1, 1); c.drawImage(im, (i % 4) * 64, Math.floor(i / 4) * 64, 64, 64, 0, 0, size, size); }
+  else c.drawImage(im, (i % 4) * 64, Math.floor(i / 4) * 64, 64, 64, dx, dy, size, size);
+  c.restore();
+}
+
+function currentFrame(t) {
+  let name = 'idle';
+  if (view.anim && t < view.animUntil) name = view.anim;
+  else if (Math.abs(view.tx - view.x) > 0.4) name = 'walk';
+  else if (need && need.key === 'sad') name = 'sad';
+  const a = ANIM[name];
+  return { name, cell: a.f[Math.floor(t / a.t) % a.f.length] };
 }
 
 function render(t) {
-  drawRoom(bg, W, H, FLOOR, t);
-  fg.clearRect(0, 0, W, H);
-  if (!pet) { requestAnimationFrame(render); return; }
-
-  // poop
-  if (pet.poop && $('outing').classList.contains('hidden')) drawMap(fg, POOP, 96, FLOOR + 1, POOP_PAL);
-
-  // movement
-  if (!busy && !need && pet.stage > 0 && t > view.walkPause) {
-    if (Math.abs(view.tx - view.x) < 0.5) { view.tx = 26 + Math.random() * 60; view.walkPause = t + 1500 + Math.random() * 2500; }
-  }
-  const speed = pet.stage === 5 ? 0.12 : 0.25;
-  if (Math.abs(view.tx - view.x) > 0.3) view.x += Math.sign(view.tx - view.x) * Math.min(speed, Math.abs(view.tx - view.x));
-
-  const spr = petSprite(), m = spr.map, { w } = mapSize(m);
-  const b = petBox();
-  let bob = (Math.floor(t / 450) % 2 === 0 && view.jump === 0 && pet.stage > 0) ? 1 : 0;
-  if (pet.stage === 0) bob = 0;
-  let sx = b.x + Math.round(Math.sin(view.shake * 1.7) * (view.shake > 0 ? 2 : 0));
-  if (pet.stage === 0 && view.wobble > 0) sx += Math.round(Math.sin(t / 40) * 1.4);
-  const sy = b.y + bob;
-
-  // shadow
-  fg.globalAlpha = 0.18 * view.alpha; fg.fillStyle = '#5a3a10';
-  fg.beginPath(); fg.ellipse(view.x, FLOOR + 6.5, w / 2.2, 1.4, 0, 0, Math.PI * 2); fg.fill();
-  fg.globalAlpha = view.alpha;
-
-  const pal = palette(pet.color);
-  if (view.flash > 0 && Math.floor(t / 90) % 2) {
-    const white = { o: '#ffffff', b: '#ffffff', l: '#ffffff', d: '#fff6c0', w: '#ffffff' };
-    drawMap(fg, m, sx, sy, white);
-  } else {
-    drawMap(fg, m, sx, sy, pal);
-    if (pet.stage > 0) {
-      let face = view.face;
-      if (t > view.faceUntil) face = need ? (need.key === 'sad' ? 'sad' : 'normal') : 'normal';
-      if ((face === 'normal') && t > view.blinkAt) { face = 'blink'; if (t > view.blinkAt + 150) view.blinkAt = t + 2000 + Math.random() * 3000; }
-      if (face === 'talk' && Math.floor(t / 160) % 2) face = 'happy';
-      drawFace(fg, spr, sx, sy, face, pal, pet.stage === 5);
-      if (pet.stage >= 4 && pet.form) drawAccessory(fg, FORMS[pet.form].acc, spr, sx, sy, w);
-      if (pet.stage === 5) drawCane(fg, sx + w + 1, sy + 8, mapSize(m).h - 8);
-    } else if (pet.eggTaps > 0) { // cracks
-      const ink = '#3a2a14';
-      if (pet.eggTaps >= 2) { px(fg, ink, sx + 5, sy + 3); px(fg, ink, sx + 6, sy + 4); px(fg, ink, sx + 5, sy + 5); }
-      if (pet.eggTaps >= 4) { px(fg, ink, sx + 4, sy + 6); px(fg, ink, sx + 3, sy + 7); px(fg, ink, sx + 7, sy + 6); px(fg, ink, sx + 8, sy + 7); }
+  ctx.clearRect(0, 0, 96, 96); fx.clearRect(0, 0, 96, 96);
+  if (pet && !view.hidden) {
+    // poop
+    if (pet.poop && !place) {
+      const p = img('assets/misc/poop.png'); if (p.complete) ctx.drawImage(p, 70, 74 + (Math.floor(t / 400) % 2));
+      const s = img('assets/misc/stinky_01.png'); if (s.complete) { ctx.globalAlpha = .7; ctx.drawImage(s, 0, 0, 16, 16, 70, 60 - (Math.floor(t / 300) % 3), 16, 16); ctx.globalAlpha = 1; }
     }
-  }
-  if (view.halo) { fg.strokeStyle = '#ffe14a'; fg.lineWidth = 1; fg.beginPath(); fg.ellipse(sx + w / 2, sy - 3, 5, 1.3, 0, 0, Math.PI * 2); fg.stroke(); }
-  fg.globalAlpha = 1;
+    // walking around
+    if (!busy && !need && pet.stage > 0 && t > view.walkPause && Math.abs(view.tx - view.x) < 0.5) {
+      view.tx = 22 + Math.random() * 52; view.walkPause = t + 2000 + Math.random() * 3000;
+    }
+    const speed = pet.stage === 5 ? 0.12 : 0.22;
+    if (Math.abs(view.tx - view.x) > 0.3) { view.flip = view.tx > view.x; view.x += Math.sign(view.tx - view.x) * Math.min(speed, Math.abs(view.tx - view.x)); }
 
-  if (view.shake > 0) view.shake = Math.max(0, view.shake - 0.25);
-  positionWorn();
+    const r = petRect();
+    // shadow
+    const sh = img('assets/misc/shadow_01.png');
+    if (sh.complete && view.float === 0) { ctx.globalAlpha = .35 * view.alpha; ctx.drawImage(sh, r.x + r.w / 2 - r.w * 0.45, FEET - r.w * 0.22, r.w * 0.9, r.w * 0.45); }
+    ctx.globalAlpha = view.alpha;
+
+    if (pet.stage === 0) {
+      const egg = img('assets/misc/egg_normal_01.png');
+      const wob = view.wobble ? Math.round(Math.sin(t / 40) * 1.5) : 0;
+      if (egg.complete) ctx.drawImage(egg, pet.eggTaps >= 3 ? 16 : 0, 0, 16, 16, r.x + wob, r.y, 16, 16);
+    } else {
+      const f = currentFrame(t);
+      const sideways = f.name === 'walk' || f.name === 'talk';
+      const flip = sideways && view.flip;
+      const bob = f.name === 'idle' && Math.floor(t / 500) % 2 ? 1 : 0;
+      const rr = { ...r, y: r.y + bob };
+      const im = img(charSrc(pet.sprite));
+      const acc = f.name === 'sleep' ? null : ACCS.find(a => a.id === shop.wearing);
+      if (acc && !acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip);
+      drawCell(ctx, im, f.cell, r.w, rr.x, rr.y, flip, view.flash && Math.floor(t / 90) % 2);
+      if (acc && acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip);
+      if (view.halo) drawAcc(ctx, 'angel_halo_01', 1, rr, false);
+    }
+    ctx.globalAlpha = 1;
+  }
+  // particles
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) {
+    p.x += p.vx; p.y += p.vy; p.vy += p.g || 0; p.life--;
+    const im = img(p.src);
+    if (!im.complete) continue;
+    fx.globalAlpha = Math.min(1, p.life / 20);
+    fx.drawImage(im, p.x - p.s / 2, p.y - p.s / 2, p.s, p.s * (im.naturalHeight / im.naturalWidth));
+  }
+  fx.globalAlpha = 1;
   requestAnimationFrame(render);
 }
-
-// scene px -> #scene css px
-const toCss = (x, y) => ({ x: 3 + x * PX, y: 1 + y * PX });
-function petCenterCss() { const b = petBox(); return toCss(b.x + b.w / 2, b.y + b.h / 2); }
-
-// ---------------------------------------------------------------- jumping
-async function hop(n = 2, h = 4) {
+function burst(kind, n = 5) {
+  const r = pet ? petRect() : { x: 40, y: 50, w: 16, h: 16 };
+  const cx = r.x + r.w / 2, cy = r.y + r.h / 3;
+  const src = { heart: 'assets/misc/heart_particle_01.png', star: 'assets/misc/star_01.png', foam: 'assets/misc/foam_single.png', z: 'assets/misc/sleep_z_01.png', twinkle: 'assets/misc/twinkle_01.png' }[kind];
   for (let i = 0; i < n; i++) {
-    for (let f = 0; f <= 10; f++) { view.jump = Math.sin(f / 10 * Math.PI) * h; await sleep(22); }
+    particles.push({
+      src, x: cx + (Math.random() - .5) * r.w, y: cy + (Math.random() - .5) * 8,
+      vx: (Math.random() - .5) * (kind === 'z' ? .2 : .6), vy: kind === 'foam' ? -.2 - Math.random() * .3 : -.35 - Math.random() * .4,
+      s: { heart: 8, star: 9, foam: 9 + Math.random() * 5, z: 7, twinkle: 10 }[kind], life: 50 + Math.random() * 30,
+    });
+  }
+}
+async function hop(n = 2, h = 5) {
+  for (let i = 0; i < n; i++) {
+    for (let f = 0; f <= 10; f++) { view.jump = Math.sin(f / 10 * Math.PI) * h; await sleep(24); }
     view.jump = 0; await sleep(60);
   }
 }
-function setFace(f, ms = 1500) { view.face = f; view.faceUntil = performance.now() + ms; }
 
 // ---------------------------------------------------------------- bubble
-function tailToPet() {
-  const bub = $('bubble');
-  const cx = toCss(view.tx, 0).x;
-  const maxRight = $('tray').classList.contains('hidden') ? 1346 : 740;
-  bub.style.maxWidth = Math.min(900, maxRight - 20) + 'px';
-  const left = Math.max(20, Math.min(maxRight - bub.offsetWidth, cx - bub.offsetWidth * 0.3));
-  bub.style.left = left + 'px';
-  bub.style.setProperty('--tail', Math.max(26, Math.min(bub.offsetWidth - 60, cx - left - 14)) + 'px');
-}
 function showBubble(text, { reply = false, ja = '' } = {}) {
   const bub = $('bubble'), t = $('bubbleText');
   bub.classList.remove('hidden', 'pop'); void bub.offsetWidth; bub.classList.add('pop');
@@ -135,126 +181,157 @@ function showBubble(text, { reply = false, ja = '' } = {}) {
   t.textContent = text;
   $('bubbleJa').textContent = ja; $('bubbleJa').classList.toggle('hidden', !ja);
   $('bubbleBtns').classList.toggle('hidden', reply);
-  tailToPet();
 }
 function hideBubble() { $('bubble').classList.add('hidden'); }
 function showNeedBubble() {
   if (!need) return;
-  const ja = need.hinted && settings.jaHint ? need.ja : '';
-  showBubble(need.en, { ja });
+  showBubble(need.en, { ja: need.hinted && settings.jaHint ? need.ja : '' });
   $('hintBtn').classList.toggle('off', need.tries < 1 && !need.hinted);
 }
-async function say(text, ms = 1800, face = 'talk') {
-  showBubble(text, { reply: true }); setFace(face, ms); await sleep(ms);
+async function say(text, ms = 1800, anim = 'cheer') {
+  showBubble(text, { reply: true }); setAnim(anim, ms); await sleep(ms);
 }
 
-// ---------------------------------------------------------------- UI: top + categories
+// ---------------------------------------------------------------- top bar / profile
 function stageReq(stage) { return Math.max(2, Math.round(STAGE_CARES[stage] * LIFE_MULT[settings.life])); }
 function age() {
   if (!pet || pet.stage === 0) return 0;
   const [a0, a1] = STAGES[pet.stage].age;
   return Math.min(a1, a0 + Math.floor(pet.progress / stageReq(pet.stage) * (a1 - a0)));
 }
+function accuracy(s) { return s && s.asked ? s.first / s.asked : 0; }
+function careStars(a) { return a >= 0.8 ? 3 : a >= 0.5 ? 2 : 1; }
 function updateTop() {
-  if (!pet) return;
+  $('starTxt').textContent = shop.stars;
+  $('shopBtn').classList.toggle('hidden', !settings.shop);
+  if (!pet) { $('nameTxt').textContent = 'Tama Talk'; $('stageTxt').textContent = ''; $('ageTxt').textContent = '0'; $('growFill').style.width = '0%'; updateProfile(); return; }
   $('nameTxt').textContent = pet.name || 'Tama Talk';
-  $('stageTxt').textContent = STAGES[pet.stage].en + (pet.stage >= 4 && pet.form ? ' · ' + FORMS[pet.form].en : '');
+  $('stageTxt').textContent = STAGES[pet.stage].en;
   $('ageTxt').textContent = age();
-  $('starTxt').textContent = pet.stars || 0;
   $('growFill').style.width = pet.stage === 0 ? '0%' : Math.min(100, pet.progress / stageReq(pet.stage) * 100) + '%';
+  updateProfile();
 }
+function updateProfile() {
+  const box = $('profile');
+  if (!pet || pet.stage === 0 || !pet.name) { box.innerHTML = '<h3>🥚 Tama Talk</h3><div class="prow"><span>Listen to your pet.</span></div><div class="prow"><span>Give it what it wants!</span></div><div class="prow"><span class="ja">ペットの えいごを よんで おせわしよう！</span></div>'; return; }
+  const st = pet.stats?.[pet.stage];
+  const care = st && st.asked ? careStars(accuracy(st)) : 0;
+  const fav = Object.entries(pet.itemCounts || {}).sort((a, b) => b[1] - a[1])[0];
+  const born = pet.born ? new Date(pet.born).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
+  const left = stageReq(pet.stage) - pet.progress;
+  box.innerHTML = `<h3><canvas width="32" height="32" id="profPic"></canvas>${pet.name}</h3>
+    <div class="prow"><span>Birthday</span><span>${born}</span></div>
+    <div class="prow"><span>Age</span><span>${age()} · ${STAGES[pet.stage].en}</span></div>
+    <div class="prow"><span>English care</span><span class="care">${care ? '★'.repeat(care) + '☆'.repeat(3 - care) : '–'}</span></div>
+    <div class="prow"><span>Favorite</span><span>${fav ? ITEM[fav[0]].e + ' ' + ITEM[fav[0]].en : '–'}</span></div>
+    <div class="prow"><span>${pet.stage === 5 ? 'Life' : 'Next stage'}</span><span>${left} more 💗</span></div>`;
+  const pc = $('profPic').getContext('2d'); pc.imageSmoothingEnabled = false;
+  const im = img(charSrc(pet.sprite)); const cs = cell();
+  const draw = () => { pc.clearRect(0, 0, 32, 32); drawCell(pc, im, 1, cs, (32 - cs) / 2, 32 - cs, false); };
+  if (im.complete) draw(); else im.onload = draw;
+}
+
+// ---------------------------------------------------------------- category buttons (bar + tama icons)
 function buildCats() {
-  const nav = $('cats'); nav.innerHTML = '';
-  if (!pet || pet.stage === 0) return;
-  for (const c of CATEGORIES) {
-    if (c.unlock > pet.stage) continue;
+  const nav = $('cats'); nav.innerHTML = ''; $('iconsTop').innerHTML = ''; $('iconsBot').innerHTML = '';
+  if (!pet || pet.stage === 0 || !pet.name) return;
+  const list = CATEGORIES.filter(c => c.unlock <= pet.stage);
+  list.forEach((c, i) => {
     const b = document.createElement('button');
     b.className = 'cat'; b.dataset.cat = c.id;
     b.innerHTML = `<span class="ic">${c.e}</span><span class="lb">${c.en}</span>` + ((pet.seenCats || []).includes(c.id) ? '' : '<span class="new">NEW!</span>');
     b.onclick = () => onCat(c);
     nav.appendChild(b);
-  }
+    const ic = document.createElement('button');
+    ic.dataset.cat = c.id; ic.textContent = c.e; ic.title = c.en;
+    ic.onclick = () => { selIcon = i; markIcon(); onCat(c); };
+    (i < Math.ceil(list.length / 2) ? $('iconsTop') : $('iconsBot')).appendChild(ic);
+  });
+  markIcon();
 }
 function markSeen(cat) {
   pet.seenCats = pet.seenCats || [];
   if (!pet.seenCats.includes(cat)) { pet.seenCats.push(cat); save(); const n = document.querySelector(`.cat[data-cat="${cat}"] .new`); if (n) n.remove(); }
 }
 function glowCats(on) {
-  document.querySelectorAll('.cat').forEach(b => b.classList.remove('glow'));
+  document.querySelectorAll('[data-cat]').forEach(b => b.classList.remove('glow'));
   if (!on || !need) return;
-  const cats = new Set(need.ok.map(id => ITEM[id].cat));
-  cats.forEach(c => { const b = document.querySelector(`.cat[data-cat="${c}"]`); if (b) b.classList.add('glow'); });
+  new Set(need.ok.map(id => ITEM[id].cat)).forEach(c => document.querySelectorAll(`[data-cat="${c}"]`).forEach(b => b.classList.add('glow')));
 }
 function setCatsEnabled(on) { $('cats').classList.toggle('disabled', !on); }
+
+// tamagotchi buttons: A = next icon, B = choose, C = cancel
+let selIcon = 0;
+function iconButtons() { return [...document.querySelectorAll('.icons button')]; }
+function markIcon() { iconButtons().forEach((b, i) => b.classList.toggle('sel', i === selIcon)); }
+document.querySelectorAll('#shellBtns button').forEach(b => b.onclick = () => {
+  sfx('shell_button_down.ogg', .5);
+  if (!pet) return;
+  if (pet.stage === 0) { tapEgg(); return; }
+  const icons = iconButtons(); if (!icons.length) return;
+  const k = b.dataset.b;
+  if (k === 'A') { selIcon = (selIcon + 1) % icons.length; markIcon(); }
+  if (k === 'B') { const tray = $('tray'); if (!tray.classList.contains('hidden')) { const first = $('trayGrid').querySelector('.item.sel') || null; if (first) first.click(); else icons[selIcon].click(); } else icons[selIcon].click(); }
+  if (k === 'C') closeTray();
+});
 
 // ---------------------------------------------------------------- tray
 function trayItems(cat) {
   const all = byCat(cat);
-  if (all.length <= 8) return all;
+  if (all.length <= 9) return all;
   const key = (need ? need.key : '-') + '|' + cat;
   if (trayCache[key]) return trayCache[key].map(id => ITEM[id]);
   const chosen = new Set();
   if (need) {
-    const oks = need.ok.filter(id => ITEM[id].cat === cat).sort(() => Math.random() - .5).slice(0, 2);
-    oks.forEach(id => chosen.add(id));
+    need.ok.filter(id => ITEM[id].cat === cat).sort(() => Math.random() - .5).slice(0, 2).forEach(id => chosen.add(id));
     Object.keys(need.avoid || {}).filter(id => ITEM[id].cat === cat).forEach(id => chosen.add(id));
   }
   const rest = all.map(i => i.id).filter(id => !chosen.has(id)).sort(() => Math.random() - .5);
-  while (chosen.size < 8) chosen.add(rest.shift());
+  while (chosen.size < 9) chosen.add(rest.shift());
   const list = [...chosen].sort(() => Math.random() - .5);
   trayCache[key] = list;
   return list.map(id => ITEM[id]);
 }
 function openTray(c) {
-  $('trayTitle').textContent = c.e + ' ' + c.en;
+  $('trayTitle').textContent = c.e + ' ' + c.en; $('tray').dataset.cat = c.id;
   const g = $('trayGrid'); g.innerHTML = '';
   for (const it of trayItems(c.id)) {
     const b = document.createElement('button');
     b.className = 'item';
-    const showLabel = settings.labels || it.label;
-    b.innerHTML = `<span class="ic${it.txt ? ' txt' : ''}">${it.e}</span>` + (showLabel ? `<span class="lb">${it.en}</span>` : '');
+    b.innerHTML = `<span class="ic${it.txt ? ' txt' : ''}">${it.e}</span>` + (settings.labels || it.label ? `<span class="lb">${it.en}</span>` : '');
     b.title = it.en;
     b.onclick = () => { const r = b.querySelector('.ic').getBoundingClientRect(); closeTray(); give(it, r); };
     g.appendChild(b);
   }
-  $('tray').classList.remove('hidden');
-  if (need) view.tx = 40;
-  if (!$('bubble').classList.contains('hidden')) tailToPet();
+  $('tray').classList.remove('hidden'); $('profile').classList.add('hidden');
+  sfx('ui_click_01.ogg', .4);
 }
-function closeTray() { $('tray').classList.add('hidden'); if (!$('bubble').classList.contains('hidden')) tailToPet(); }
+function closeTray() { $('tray').classList.add('hidden'); $('profile').classList.remove('hidden'); }
 $('trayClose').onclick = closeTray;
 
 function onCat(c) {
   if (busy || !pet || pet.stage === 0) return;
   markSeen(c.id);
-  if (c.single) { closeTray(); const r = document.querySelector(`.cat[data-cat="${c.id}"] .ic`).getBoundingClientRect(); give(ITEM[c.single], r); return; }
-  if (!$('tray').classList.contains('hidden') && $('trayTitle').textContent.includes(c.en)) { closeTray(); return; }
+  if (c.single) { closeTray(); const el = document.querySelector(`[data-cat="${c.id}"]:not(.hidden)`); give(ITEM[c.single], el && el.getBoundingClientRect()); return; }
+  if (!$('tray').classList.contains('hidden') && $('tray').dataset.cat === c.id) { closeTray(); return; }
   openTray(c);
 }
 
-// ---------------------------------------------------------------- effects
-function sceneRect() { return $('scene').getBoundingClientRect(); }
-function screenToScene(r) { // DOMRect (screen) -> scene css coords (unscaled)
-  const s = sceneRect(), k = s.width / $('scene').offsetWidth;
-  return { x: (r.left + r.width / 2 - s.left) / k, y: (r.top + r.height / 2 - s.top) / k };
+// ---------------------------------------------------------------- effects outside the screen
+function toApp(x, y) { const a = $('app').getBoundingClientRect(); return { x: (x - a.left) / appScale, y: (y - a.top) / appScale }; }
+function petOnPage() {
+  const s = $('screen').getBoundingClientRect(), r = pet ? petRect() : { x: 40, y: 60, w: 16, h: 16 };
+  return { x: s.left + (r.x + r.w / 2) / 96 * s.width, y: s.top + (r.y + r.h / 2) / 96 * s.height };
 }
 async function flyEmoji(emoji, fromRect) {
   const el = document.createElement('div'); el.className = 'fly'; el.textContent = emoji;
-  const from = fromRect ? screenToScene(fromRect) : { x: 900, y: 200 };
+  const from = fromRect ? toApp(fromRect.left + fromRect.width / 2, fromRect.top + fromRect.height / 2) : { x: 1100, y: 250 };
   el.style.left = (from.x - 40) + 'px'; el.style.top = (from.y - 40) + 'px';
-  $('fx').appendChild(el); void el.offsetWidth;
-  const c = petCenterCss();
-  el.style.left = (c.x - 40) + 'px'; el.style.top = (c.y - 40) + 'px'; el.style.transform = 'scale(.7)';
+  $('fxApp').appendChild(el); void el.offsetWidth;
+  const p = petOnPage(), to = toApp(p.x, p.y);
+  el.style.left = (to.x - 40) + 'px'; el.style.top = (to.y - 40) + 'px'; el.style.transform = 'scale(.5)';
+  sfx('swoosh_01.ogg', .35);
   await sleep(720); el.remove();
-}
-function floaters(emoji, n = 5) {
-  const c = petCenterCss();
-  for (let i = 0; i < n; i++) {
-    const el = document.createElement('div'); el.className = 'float'; el.textContent = emoji;
-    el.style.left = (c.x - 20 + (Math.random() - .5) * 160) + 'px'; el.style.top = (c.y - 40 + (Math.random() - .5) * 60) + 'px';
-    el.style.animationDelay = (i * 0.12) + 's';
-    $('fx').appendChild(el); setTimeout(() => el.remove(), 2200);
-  }
 }
 function confetti() {
   const cols = ['#ff3f7a', '#ffd84a', '#2ec4ff', '#6fdc4a', '#ff8a1f'];
@@ -262,39 +339,23 @@ function confetti() {
     const el = document.createElement('div'); el.className = 'confetti';
     el.style.left = Math.random() * 1366 + 'px'; el.style.top = '-20px'; el.style.background = cols[i % 5];
     el.style.animationDelay = Math.random() * 0.8 + 's';
-    $('fx').appendChild(el); setTimeout(() => el.remove(), 3200);
+    $('fxApp').appendChild(el); setTimeout(() => el.remove(), 3200);
   }
 }
-let worn = null;
-function wear(emoji) {
-  if (worn) worn.remove();
-  worn = document.createElement('div'); worn.className = 'worn'; worn.textContent = emoji;
-  $('scene').appendChild(worn);
-  const w = worn; setTimeout(() => { w.style.opacity = 0; setTimeout(() => { w.remove(); if (worn === w) worn = null; }, 600); }, 5000);
-}
-function positionWorn() {
-  if (!worn) return;
-  const b = petBox(), c = toCss(b.x + b.w, b.y + b.h * 0.35);
-  worn.style.left = (c.x - 10) + 'px'; worn.style.top = (c.y - 40) + 'px';
-}
 
-// ---------------------------------------------------------------- core: giving things
+// ---------------------------------------------------------------- giving things
 function fill(s, it) { return s.replace(/\{en\}/g, it.en).replace(/\{done\}/g, it.done || ''); }
 
 async function give(it, fromRect) {
   if (busy) return;
-  busy = true; setCatsEnabled(false);
-  clearTimeout(needTimer);
-
+  busy = true; setCatsEnabled(false); clearTimeout(needTimer);
   if (!need) { // nothing requested – friendly, no growth
-    if (it.id === 'hug') { await hop(1, 3); floaters('💗', 4); await say(rnd(["Hehe! I'm happy!", 'I like you!', 'Hehe!']), 1500, 'happy'); }
-    else if (it.id === 'cleanup' && pet.poop) { pet.poop = false; save(); await say('Thank you!', 1300, 'happy'); }
-    else { await flyEmoji(it.e, fromRect); await say(rnd(["I'm OK. Thank you!", 'No, thank you. Maybe later!']), 1600, 'normal'); }
+    if (it.id === 'hug') { sfx('cute.ogg'); burst('heart', 4); setAnim('blush', 1500); await hop(1, 3); await say(rnd(["Hehe! I'm happy!", 'I like you!', 'Hehe!']), 1500, 'blush'); }
+    else if (it.id === 'cleanup' && pet.poop) { pet.poop = false; save(); burst('twinkle', 3); await say('Thank you!', 1300); }
+    else { await flyEmoji(it.e, fromRect); sfx('refuse.ogg', .4); await say(rnd(["I'm OK. Thank you!", 'No, thank you. Maybe later!']), 1600, 'idle'); }
     hideBubble(); finishBusy(); scheduleNeed(); return;
   }
-
-  if (need.ok.includes(it.id)) await success(it, fromRect);
-  else await wrong(it, fromRect);
+  if (need.ok.includes(it.id)) await success(it, fromRect); else await wrong(it, fromRect);
   finishBusy();
 }
 function finishBusy() { busy = false; setCatsEnabled(true); }
@@ -302,7 +363,7 @@ function finishBusy() { busy = false; setCatsEnabled(true); }
 async function wrong(it, fromRect) {
   need.tries++;
   if (it.id !== 'hug' && it.cat !== 'sleep') await flyEmoji(it.e, fromRect);
-  view.shake = 6; setFace('no', 1700);
+  sfx('refuse.ogg'); setAnim('refuse', 1700);
   const reply = (need.avoid && need.avoid[it.id]) || rnd(NO_THANKS);
   showBubble(reply, { reply: true });
   await sleep(1700);
@@ -311,53 +372,67 @@ async function wrong(it, fromRect) {
 }
 
 async function success(it, fromRect) {
-  const firstTry = need.tries === 0;
-  const wasBirthday = need.birthday;
+  const firstTry = need.tries === 0, wasBirthday = need.birthday, cat = it.cat;
   glowCats(false);
-  const cat = it.cat;
+  const where = PLACE_OF[it.id] || (CAT_PLACE[cat] && { bg: CAT_PLACE[cat], e: cat === 'trip' ? it.e : '' });
+  const fancy = need.en.startsWith("I'd like");
 
-  if (cat === 'go' || cat === 'trip') {
+  if (cat === 'food' || cat === 'drink') {
+    goPlace(fancy ? 'restaurant' : 'kitchen');
+    view.tx = view.x = 48; hideBubble();
     await flyEmoji(it.e, fromRect);
-    $('outingEmoji').textContent = it.e; $('outing').classList.remove('hidden');
-    view.tx = view.x = 40; hideBubble();
-    await hop(3, 5);
-    await say(fill(rnd(THANKS[cat]), it), 2300, 'happy');
-    $('outing').classList.add('hidden');
+    sfx('eat.ogg'); setAnim('eat', 1400); await sleep(1400);
+    hop(1, 3);
+    await say(fill(rnd(THANKS[cat]), it), 1800);
   } else if (cat === 'sleep') {
-    $('night').classList.remove('hidden'); hideBubble(); setFace('sleep', 3200);
-   
-    await sleep(3200);
-    $('night').classList.add('hidden');
-    await hop(1, 3);
-    await say('Good morning!', 1500, 'happy');
+    $('nightLayer').classList.remove('hidden'); hideBubble(); setAnim('sleep', 3400);
+    const zz = setInterval(() => burst('z', 1), 500);
+    await sleep(3400); clearInterval(zz);
+    $('nightLayer').classList.add('hidden');
+    sfx('jump.ogg'); await hop(1, 4);
+    await say('Good morning!', 1500);
   } else if (it.id === 'hug') {
-    hideBubble(); floaters('💗', 6); await hop(2, 3);
-    await say(rnd(THANKS.hug), 1700, 'happy');
+    hideBubble(); sfx('cute.ogg'); burst('heart', 7); setAnim('blush', 1200); await hop(2, 3);
+    await say(rnd(THANKS.hug), 1700, 'blush');
   } else if (it.id === 'cleanup') {
-    await flyEmoji(it.e, fromRect); pet.poop = false; floaters('✨', 4);
-    await say(rnd(THANKS.cleanup), 1500, 'happy');
-  } else {
+    await flyEmoji(it.e, fromRect); pet.poop = false; burst('twinkle', 4); sfx('pop_01.mp3');
+    await say(rnd(THANKS.cleanup), 1500);
+  } else if (cat === 'clean') {
+    goPlace('bathroom'); view.tx = view.x = 48; hideBubble();
     await flyEmoji(it.e, fromRect);
-    if (cat === 'wear') wear(it.e);
-    if (cat === 'clean') floaters('🫧', 6);
-    if (cat === 'food' || cat === 'drink') { setFace('talk', 900); await sleep(900); }
-    hop(2, 3);
-    const line = cat === 'wear' && (need.key === 'cold' || need.key === 'snowy') ? 'Warm! Thank you!' : fill(rnd(THANKS[cat]), it);
-    await say(line, 1800, 'happy');
+    burst('foam', 9); sfx('pop_01.mp3'); setAnim('sit', 1200); await sleep(1300);
+    burst('twinkle', 3); hop(1, 3);
+    await say(rnd(THANKS.clean), 1800);
+  } else if (where) {
+    await flyEmoji(it.e, fromRect); hideBubble();
+    sfx('swoosh_01.ogg', .5);
+    goPlace(where.bg, where.e);
+    view.tx = view.x = 36; sfx('cheer.ogg', .5); setAnim('cheer', 1500);
+    await hop(3, 5);
+    await say(fill(rnd(THANKS[cat] || THANKS.fun), it), 2300);
+  } else { // wear etc.
+    await flyEmoji(it.e, fromRect);
+    $('emojiLayer').innerHTML = `<span>${it.e}</span>`;
+    sfx('cheer.ogg', .5); hop(2, 3);
+    const line = cat === 'wear' && (need.key === 'cold' || need.key === 'snowy') ? 'Warm! Thank you!' : fill(rnd(THANKS[cat] || THANKS.wear), it);
+    await say(line, 1800);
   }
-  if (wasBirthday) { confetti(); await say('Happy birthday to me! Thank you!', 2200, 'happy'); }
+  if (wasBirthday) { sfx('birthday_song_01.ogg', .5); confetti(); await say('Happy birthday to me! Thank you!', 2400); }
+  homeBg();
 
-  floaters(firstTry ? '⭐' : '💗', firstTry ? 3 : 2);
-  if (firstTry) pet.stars = (pet.stars || 0) + 1;
+  burst(firstTry ? 'star' : 'heart', firstTry ? 3 : 2);
+  sfx(firstTry ? 'cheer_success.ogg' : 'task_complete.ogg', .5);
+  shop.stars += firstTry ? 2 : 1; store(SHOP_KEY, shop);
+  pet.starsEarned = (pet.starsEarned || 0) + (firstTry ? 2 : 1);
   pet.cares = (pet.cares || 0) + 1;
-  pet.catCounts = pet.catCounts || {};
-  pet.catCounts[cat] = (pet.catCounts[cat] || 0) + 1;
+  pet.stats = pet.stats || {}; const st = (pet.stats[pet.stage] = pet.stats[pet.stage] || { asked: 0, first: 0 });
+  st.asked++; if (firstTry) st.first++;
+  pet.itemCounts = pet.itemCounts || {}; pet.itemCounts[it.id] = (pet.itemCounts[it.id] || 0) + 1;
   pet.progress++;
   need = null; trayCache = {};
-  hideBubble();
-  save(); updateTop();
+  hideBubble(); save(); updateTop();
   await checkGrowth();
-  if (need) { showNeedBubble(); }
+  if (need) showNeedBubble();
   else if (pet && pet.stage > 0) scheduleNeed();
 }
 
@@ -365,41 +440,41 @@ async function success(it, fromRect) {
 async function checkGrowth() {
   if (pet.progress < stageReq(pet.stage)) return;
   if (pet.stage === 5) { await farewell(); return; }
-  await say("Wow! I'm growing up!", 1600, 'happy');
+  const stg = pet.stats?.[pet.stage];
+  const care = stg && stg.asked ? careStars(accuracy(stg)) : 2;
+  await say("Wow! I'm growing up!", 1600, 'shocked');
   hideBubble();
-  view.flash = 1; await sleep(1600); view.flash = 0;
-  pet.stage++; pet.progress = 0;
-  if (pet.stage === 4) {
-    const tally = {};
-    for (const [c, n] of Object.entries(pet.catCounts || {})) { const f = FORM_OF_CAT[c]; tally[f] = (tally[f] || 0) + n; }
-    pet.form = Object.entries(tally).sort((a, b) => b[1] - a[1])[0]?.[0] || 'care';
-  }
+  view.flash = 1; sfx('blush.ogg'); await sleep(1700);
+  const options = GROWTH[pet.sprite] || [];
+  const next = pet.stage + 1;
+  let sprite = options.length === 1 ? options[0] : options[care - 1];
+  if (!sprite || !CHARS[STAGE_KEY[next]].includes(sprite)) sprite = rnd(CHARS[STAGE_KEY[next]]);
+  pet.sprite = sprite; pet.stage = next; pet.progress = 0;
+  view.flash = 0;
   save(); updateTop(); buildCats();
-  await hop(2, 5); confetti();
-  if (pet.stage === 4) await say(`${FORMS[pet.form].line} I'm ${FORMS[pet.form].en} ${pet.name}!`, 2600, 'happy');
-  else if (pet.stage === 5) await say(`I'm a senior now.`, 2000, 'happy');
-  else await say(`I'm a ${STAGES[pet.stage].en.toLowerCase()} now!`, 2000, 'happy');
+  sfx('cheer_success.ogg'); burst('twinkle', 5); await hop(2, 5); confetti();
+  await say(pet.stage === 5 ? "I'm a senior now." : `I'm a ${STAGES[pet.stage].en.toLowerCase()} now!`, 2000);
   const newCats = CATEGORIES.filter(c => c.unlock === pet.stage);
-  if (newCats.length) await say(`New: ${newCats.map(c => c.en).join(' and ')}!`, 1800, 'happy');
+  if (newCats.length) await say(`New: ${newCats.map(c => c.en).join(' and ')}!`, 1800);
   need = birthdayNeed(STAGES[pet.stage].age[0]);
 }
 
 async function farewell() {
   busy = true; setCatsEnabled(false); clearTimeout(needTimer); closeTray();
-  view.tx = view.x = 60;
-  await say("I'm 100 years old now.", 2400, 'happy');
-  await say(`I had a very happy life. Thank you for everything!`, 3200, 'happy');
-  await say('Goodbye! See you!', 2400, 'happy');
+  view.tx = view.x = 48;
+  await say("I'm 100 years old now.", 2400, 'idle');
+  await say('I had a very happy life. Thank you for everything!', 3200, 'blush');
+  await say('Goodbye! See you!', 2400);
   hideBubble();
-  view.halo = true; setFace('happy', 9000);
-  for (let i = 0; i < 70; i++) { view.float += 0.45; view.alpha = Math.max(0, 1 - i / 70); if (i % 10 === 0) floaters('✨', 2); await sleep(45); }
-  const entry = { name: pet.name, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
+  view.halo = true; setAnim('cheer', 9000);
+  for (let i = 0; i < 80; i++) { view.float += 0.6; view.alpha = Math.max(0, 1 - i / 80); if (i % 10 === 0) burst('twinkle', 2); await sleep(45); }
+  const entry = { name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
   const alb = load(ALB_KEY, []); alb.unshift(entry); store(ALB_KEY, alb);
   $('byeEn').textContent = `${pet.name} went to Star Land.`;
   $('byeJa').textContent = `${pet.name}は ほしの くにへ いったよ。たいせつに そだてて くれて ありがとう！`;
   $('byeStats').textContent = `⭐ ${entry.stars}  ·  💗 ${entry.cares} requests  ·  100 years old`;
   $('byeCard').classList.remove('hidden');
-  pet = null; localStorage.removeItem(SAVE_KEY); $('cats').innerHTML = '';
+  pet = null; localStorage.removeItem(SAVE_KEY); buildCats(); updateTop();
   view.halo = false; view.float = 0; view.alpha = 1;
   busy = false;
 }
@@ -416,49 +491,45 @@ function newNeed() {
   if (busy || need || !pet || pet.stage === 0) return;
   need = makeNeed(pet.stage);
   if (need.poop) pet.poop = true;
-  trayCache = {};
-  view.tx = 46;
-  showNeedBubble();
+  trayCache = {}; view.tx = 48;
+  showNeedBubble(); sfx('pop_01.mp3', .4);
   save();
 }
-
 $('hintBtn').onclick = () => {
   if (!need || (need.tries < 1 && !need.hinted)) return;
   need.hinted = true; glowCats(true); showNeedBubble();
 };
 
 // tap the pet = hug (or egg tap)
-$('scene').addEventListener('pointerdown', e => {
+$('screen').addEventListener('pointerdown', e => {
   if (!pet || busy) return;
-  if (e.target.closest('#bubble, #tray, .card')) return;
-  const s = sceneRect(), k = s.width / $('scene').offsetWidth;
-  const x = ((e.clientX - s.left) / k - 3) / PX, y = ((e.clientY - s.top) / k - 1) / PX;
-  const b = petBox();
-  if (x < b.x - 2 || x > b.x + b.w + 2 || y < b.y - 2 || y > b.y + b.h + 2) return;
-  if (pet.stage === 0) tapEgg();
-  else give(ITEM.hug, null);
+  const s = $('screen').getBoundingClientRect();
+  const x = (e.clientX - s.left) / s.width * 96, y = (e.clientY - s.top) / s.height * 96;
+  const r = petRect();
+  if (x < r.x - 4 || x > r.x + r.w + 4 || y < r.y - 4 || y > r.y + r.h + 4) return;
+  if (pet.stage === 0) tapEgg(); else give(ITEM.hug, null);
 });
 
 // ---------------------------------------------------------------- new pet flow
-function drawEggPreview(cv, color) {
-  const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; c.clearRect(0, 0, cv.width, cv.height);
-  drawMap(c, SPR.egg.map, 0, 0, palette(color));
-}
+const EGG_HUES = [0, 90, 180, 250, 320];
 function startChoice() {
-  pet = null; need = null; hideBubble(); closeTray(); buildCats(); setCatsEnabled(false);
-  $('nameTxt').textContent = 'Tama Talk'; $('stageTxt').textContent = ''; $('ageTxt').textContent = '0'; $('starTxt').textContent = '0'; $('growFill').style.width = '0%';
+  pet = null; need = null; hideBubble(); closeTray(); buildCats(); setCatsEnabled(false); homeBg(); updateTop();
   const row = $('eggRow'); row.innerHTML = '';
-  for (const col of Object.keys(COLORS)) {
+  const egg = img('assets/misc/egg_normal_01.png');
+  EGG_HUES.forEach((h, i) => {
     const b = document.createElement('button'); b.className = 'eggBtn';
-    const cv = document.createElement('canvas'); cv.width = 12; cv.height = 15; drawEggPreview(cv, col);
-    b.appendChild(cv); b.onclick = () => chooseEgg(col); row.appendChild(b);
-  }
+    const cv = document.createElement('canvas'); cv.width = cv.height = 16; cv.style.filter = `hue-rotate(${h}deg)`;
+    const draw = () => { const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; c.drawImage(egg, 0, 0, 16, 16, 0, 0, 16, 16); };
+    if (egg.complete) draw(); else egg.addEventListener('load', draw);
+    b.appendChild(cv); b.onclick = () => chooseEgg(i); row.appendChild(b);
+  });
   $('eggChoice').classList.remove('hidden');
 }
-function chooseEgg(color) {
-  $('eggChoice').classList.add('hidden');
-  pet = { v: 1, color, stage: 0, progress: 0, eggTaps: 0, stars: 0, cares: 0, catCounts: {}, seenCats: [], born: null, name: '' };
-  view.x = view.tx = 60;
+function chooseEgg(i) {
+  $('eggChoice').classList.add('hidden'); sfx('ui_click_01.ogg');
+  const babies = CHARS.baby;
+  pet = { v: 2, stage: 0, egg: i, sprite: babies[(i * 3 + Math.floor(Math.random() * 3)) % babies.length], progress: 0, eggTaps: 0, cares: 0, stats: {}, itemCounts: {}, seenCats: [], born: null, name: '' };
+  view.x = view.tx = 48;
   save(); updateTop();
   $('tapEgg').classList.remove('hidden');
 }
@@ -466,26 +537,24 @@ let eggBusy = false;
 async function tapEgg() {
   if (eggBusy) return;
   eggBusy = true;
-  pet.eggTaps++; view.wobble = 1; await sleep(350); view.wobble = 0;
+  pet.eggTaps++; view.wobble = 1; sfx('jump.ogg', .4); await sleep(350); view.wobble = 0;
   if (pet.eggTaps >= 5) {
     $('tapEgg').classList.add('hidden');
     view.wobble = 1; await sleep(900); view.wobble = 0;
-    view.flash = 1; await sleep(900); view.flash = 0;
+    view.flash = 1; await sleep(400);
     pet.stage = 1; pet.progress = 0; pet.born = new Date().toISOString();
+    await sleep(600); view.flash = 0;
+    sfx('cheer_success.ogg'); burst('twinkle', 5);
     save(); updateTop();
     await hop(2, 4);
     askName();
   }
   eggBusy = false;
 }
-
 function askName() {
   busy = true;
-  const inp = $('nameInput');
-  $('nameQ').textContent = "Hello! What's my name?";
-  $('nameJa').textContent = 'ペットの なまえを ローマじで かいてね';
-  inp.value = ''; inp.placeholder = 'Pochi';
-  $('nameCard').classList.remove('hidden'); setTimeout(() => inp.focus(), 50);
+  $('nameInput').value = '';
+  $('nameCard').classList.remove('hidden'); setTimeout(() => $('nameInput').focus(), 50);
 }
 $('nameInput').addEventListener('input', e => { e.target.value = e.target.value.replace(/[^A-Za-z \-]/g, ''); });
 $('nameInput').addEventListener('keydown', e => { if (e.key === 'Enter') $('nameOk').click(); });
@@ -496,43 +565,86 @@ $('nameOk').onclick = async () => {
   $('nameCard').classList.add('hidden');
   pet.name = v; save(); updateTop();
   const d = new Date(pet.born);
-  const month = d.toLocaleString('en-US', { month: 'long' });
-  await say(`My name is ${v}! Nice to meet you!`, 2200, 'happy');
-  await say(`My birthday is ${month} ${d.getDate()}.`, 2400, 'happy');
+  await say(`My name is ${v}! Nice to meet you!`, 2200);
+  await say(`My birthday is ${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}.`, 2400);
   hideBubble(); busy = false;
-  buildCats(); setCatsEnabled(true);
+  buildCats(); setCatsEnabled(true); updateTop();
   scheduleNeed(1500);
 };
 
-// ---------------------------------------------------------------- save
-function save() {
-  if (!pet) return;
-  const copy = Object.assign({}, pet);
-  store(SAVE_KEY, copy);
+function save() { if (pet) store(SAVE_KEY, pet); }
+
+// ---------------------------------------------------------------- shop
+let shopTab = 'acc';
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => { shopTab = b.dataset.tab; renderShop(); });
+function renderShop() {
+  $('shopStars').textContent = shop.stars;
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === shopTab));
+  const g = $('shopGrid'); g.innerHTML = '';
+  const list = shopTab === 'acc' ? ACCS : ROOMS;
+  for (const it of list) {
+    const owned = shopTab === 'acc' ? shop.acc.includes(it.id) : shop.rooms.includes(it.id);
+    const on = shopTab === 'acc' ? shop.wearing === it.id : shop.room === it.id;
+    const d = document.createElement('button');
+    d.className = 'sitem' + (owned ? ' owned' : '') + (on ? ' on' : '') + (!owned && shop.stars < it.price ? ' cant' : '');
+    if (shopTab === 'acc') {
+      const cv = document.createElement('canvas'); cv.width = cv.height = 64; d.appendChild(cv);
+      const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
+      const draw = () => {
+        c.clearRect(0, 0, 64, 64);
+        const r = { x: 16, y: 16, w: 32, h: 32 };
+        if (!it.front) drawAcc(c, it.id, 1, r, false);
+        if (pet && pet.stage > 0) drawCell(c, img(charSrc(pet.sprite)), 1, cell(), 32 - cell() / 2, 48 - cell(), false);
+        if (it.front) drawAcc(c, it.id, 1, r, false);
+      };
+      const im = img(`assets/acc/${it.id}.png`); if (im.complete) draw(); else im.addEventListener('load', draw);
+    } else {
+      const t = document.createElement('div'); t.className = 'thumb'; t.style.backgroundImage = `url(${bgSrc(it.id)})`; d.appendChild(t);
+    }
+    d.insertAdjacentHTML('beforeend', `<div>${it.en}</div><div class="price">${on ? '✔ ON' : owned ? (shopTab === 'acc' ? 'Wear' : 'Use') : '⭐ ' + it.price}</div>`);
+    d.onclick = () => {
+      if (shopTab === 'acc') {
+        if (owned) shop.wearing = on ? null : it.id;
+        else if (shop.stars >= it.price) { shop.stars -= it.price; shop.acc.push(it.id); shop.wearing = it.id; sfx('task_complete.ogg'); }
+        else { sfx('refuse.ogg', .4); return; }
+      } else {
+        if (owned) shop.room = it.id;
+        else if (shop.stars >= it.price) { shop.stars -= it.price; shop.rooms.push(it.id); shop.room = it.id; sfx('task_complete.ogg'); }
+        else { sfx('refuse.ogg', .4); return; }
+        if (!place) homeBg();
+      }
+      store(SHOP_KEY, shop); updateTop(); renderShop();
+    };
+    g.appendChild(d);
+  }
 }
+$('shopBtn').onclick = () => { renderShop(); openModal('shop'); };
 
 // ---------------------------------------------------------------- album
-function drawPetThumb(cv, e) {
-  const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; c.clearRect(0, 0, cv.width, cv.height);
-  const spr = SPR[5], { w, h } = mapSize(spr.map), x = Math.floor((cv.width - w) / 2) - 1, y = cv.height - h;
-  const pal = palette(e.color);
-  drawMap(c, spr.map, x, y, pal); drawFace(c, spr, x, y, 'happy', pal, true);
-  if (e.form) drawAccessory(c, FORMS[e.form].acc, spr, x, y, w);
-}
 $('albumBtn').onclick = () => {
   const list = $('albumList'); list.innerHTML = '';
   const alb = load(ALB_KEY, []);
   if (!alb.length) list.innerHTML = '<div class="empty">No pets yet. <br><small>まだ だれも いないよ</small></div>';
   for (const e of alb) {
     const d = document.createElement('div'); d.className = 'alb';
-    const cv = document.createElement('canvas'); cv.width = 24; cv.height = 27; drawPetThumb(cv, e);
-    d.appendChild(cv);
+    const cv = document.createElement('canvas'); cv.width = cv.height = 32; d.appendChild(cv);
+    if (e.sprite) { const im = img(charSrc(e.sprite)); const draw = () => { const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; drawCell(c, im, 2, im.naturalWidth / 4, (32 - im.naturalWidth / 4) / 2, 32 - im.naturalWidth / 4, false); }; if (im.complete) draw(); else im.addEventListener('load', draw); }
     const born = e.born ? new Date(e.born).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-    d.insertAdjacentHTML('beforeend', `<b>${e.name}</b>${e.form ? FORMS[e.form].en + ' · ' : ''}⭐ ${e.stars}<br><small>Born ${born}${e.reset ? ' · (reset)' : ''}</small>`);
+    d.insertAdjacentHTML('beforeend', `<b>${e.name}</b>⭐ ${e.stars || 0} · 💗 ${e.cares || 0}<br><small>Born ${born}${e.reset ? ' · (reset)' : ''}</small>`);
     list.appendChild(d);
   }
   openModal('album');
 };
+
+// ---------------------------------------------------------------- view toggle (normal / tamagotchi)
+function applyView() {
+  const tama = settings.view === 'tama';
+  $('app').classList.toggle('tama', tama);
+  $('viewIc').textContent = tama ? '🖥️' : '🥚';
+  $('viewLb').textContent = tama ? 'Big view' : 'Tama view';
+}
+$('viewBtn').onclick = () => { settings.view = settings.view === 'tama' ? 'normal' : 'tama'; store(SET_KEY, settings); applyView(); sfx('shell_button_up.ogg', .5); };
+$('soundBtn').onclick = () => { settings.sound = window.soundOn = !settings.sound; store(SET_KEY, settings); $('soundBtn').textContent = settings.sound ? '🔔' : '🔕'; };
 
 // ---------------------------------------------------------------- settings (hold ⚙ for 1 second)
 let holdT = null;
@@ -544,13 +656,12 @@ function openSettings() {
     for (const [val, label] of SETTING_OPTS[key]) {
       const b = document.createElement('button'); b.textContent = label;
       if (settings[key] === val) b.classList.add('on');
-      b.onclick = () => { settings[key] = val; store(SET_KEY, settings); openSettings(); updateTop(); applySettings(); };
+      b.onclick = () => { settings[key] = val; store(SET_KEY, settings); openSettings(); updateTop(); if (need && !busy) showNeedBubble(); };
       seg.appendChild(b);
     }
   });
   openModal('settings');
 }
-function applySettings() { if (need && !busy) showNeedBubble(); }
 function openModal(id) { $('modalBack').classList.remove('hidden'); document.querySelectorAll('.modal').forEach(m => m.classList.toggle('hidden', m.id !== id)); }
 function closeModal() { $('modalBack').classList.add('hidden'); }
 document.querySelectorAll('.closeModal').forEach(b => b.onclick = closeModal);
@@ -558,26 +669,26 @@ $('modalBack').addEventListener('pointerdown', e => { if (e.target === $('modalB
 $('resetBtn').onclick = () => openModal('confirm');
 $('confirmNo').onclick = () => openSettings();
 $('confirmYes').onclick = () => {
-  if (pet && pet.stage > 0) { const alb = load(ALB_KEY, []); alb.unshift({ name: pet.name, color: pet.color, form: pet.form, stars: pet.stars || 0, cares: pet.cares || 0, born: pet.born, reset: true }); store(ALB_KEY, alb); }
+  if (pet && pet.stage > 0) { const alb = load(ALB_KEY, []); alb.unshift({ name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, reset: true }); store(ALB_KEY, alb); }
   localStorage.removeItem(SAVE_KEY); closeModal(); clearTimeout(needTimer);
-  $('nameCard').classList.add('hidden'); $('tapEgg').classList.add('hidden'); $('byeCard').classList.add('hidden');
+  ['nameCard', 'tapEgg', 'byeCard'].forEach(id => $(id).classList.add('hidden'));
   busy = false; startChoice();
 };
 
 // ---------------------------------------------------------------- boot
 function boot() {
-  applySettings();
+  applyView(); homeBg();
+  $('soundBtn').textContent = settings.sound ? '🔔' : '🔕';
   requestAnimationFrame(render);
   if (!pet) { startChoice(); return; }
-  view.x = view.tx = 46;
+  view.x = view.tx = 48;
   updateTop(); buildCats();
   if (pet.stage === 0) { $('tapEgg').classList.remove('hidden'); setCatsEnabled(false); return; }
   if (!pet.name) { askName(); return; }
-  // welcome back – nothing bad happened while away
   busy = true; setCatsEnabled(false);
   (async () => {
     await sleep(500);
-    await say('Hello! I missed you!', 2000, 'happy');
+    await say('Hello! I missed you!', 2000);
     hideBubble(); busy = false; setCatsEnabled(true); scheduleNeed(1200);
   })();
 }

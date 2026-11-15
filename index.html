@@ -7,62 +7,71 @@
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥚</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=M+PLUS+Rounded+1c:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=M+PLUS+Rounded+1c:wght@700;800&family=DotGothic16&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
 <div id="app">
-  <!-- top bar -->
   <header id="top">
     <div id="petName" class="pill"><span id="nameTxt">Tama Talk</span><small id="stageTxt"></small></div>
     <div id="ageBox" class="pill">Age <b id="ageTxt">0</b></div>
-    <div id="growBox" class="pill" title="Growth">
-      <span>🌱</span><div id="growBar"><div id="growFill"></div></div>
-    </div>
-    <div id="starBox" class="pill">⭐ <b id="starTxt">0</b></div>
+    <div id="growBox" class="pill" title="Growth"><span>🌱</span><div id="growBar"><div id="growFill"></div></div></div>
+    <div id="starBox" class="pill" title="Stars – spend them in the shop">⭐ <b id="starTxt">0</b></div>
     <div class="spacer"></div>
+    <button id="viewBtn" class="round wide" title="Tamagotchi view"><span id="viewIc">🥚</span> <span id="viewLb">Tama view</span></button>
+    <button id="shopBtn" class="round" title="Shop">🛍️</button>
     <button id="albumBtn" class="round" title="Album">📖</button>
+    <button id="soundBtn" class="round" title="Sound effects on/off">🔔</button>
     <button id="gearBtn" class="round" title="Teacher settings (hold)"><span>⚙️</span><i class="ring"></i></button>
   </header>
 
-  <!-- scene -->
-  <main id="scene">
-    <canvas id="bg" width="136" height="42"></canvas>
-    <div id="outing" class="hidden"><div id="outingEmoji"></div></div>
-    <div id="night" class="hidden"><span class="moon">🌙</span><span class="z z1">Z</span><span class="z z2">z</span><span class="z z3">Z</span></div>
-    <canvas id="fg" width="136" height="42"></canvas>
-    <div id="fx"></div>
-
-    <div id="bubble" class="hidden">
-      <div id="bubbleText"></div>
-      <div id="bubbleJa" class="hidden"></div>
-      <div id="bubbleBtns">
-        <button id="hintBtn" class="mini" title="Hint">💡</button>
+  <main id="main">
+    <section id="talkCol">
+      <div id="bubble" class="hidden">
+        <div id="bubbleText"></div>
+        <div id="bubbleJa" class="hidden"></div>
+        <div id="bubbleBtns"><button id="hintBtn" class="mini" title="Hint">💡 Hint</button></div>
       </div>
-    </div>
+    </section>
 
-    <div id="tray" class="hidden">
-      <div id="trayHead"><span id="trayTitle"></span><button id="trayClose" class="mini">✖</button></div>
-      <div id="trayGrid"></div>
-    </div>
+    <section id="stageCol">
+      <div id="shell">
+        <div id="shellLogo">Tama Talk</div>
+        <div id="iconsTop" class="icons"></div>
+        <div id="screenWrap">
+          <div id="screen">
+            <div id="bgLayer"></div>
+            <div id="emojiLayer"></div>
+            <canvas id="pet" width="96" height="96"></canvas>
+            <div id="nightLayer" class="hidden"></div>
+            <canvas id="fxc" width="96" height="96"></canvas>
+          </div>
+        </div>
+        <div id="iconsBot" class="icons"></div>
+        <div id="shellBtns"><button data-b="A">A</button><button data-b="B">B</button><button data-b="C">C</button></div>
+      </div>
+    </section>
 
-    <!-- start / egg choice -->
+    <section id="sideCol">
+      <div id="tray" class="hidden">
+        <div id="trayHead"><span id="trayTitle"></span><button id="trayClose" class="mini">✖</button></div>
+        <div id="trayGrid"></div>
+      </div>
+      <div id="profile"></div>
+    </section>
+
     <div id="eggChoice" class="card hidden">
       <h1>Tama Talk</h1>
       <p class="ja">たまごを えらんでね！</p>
       <p class="en">Choose an egg!</p>
       <div id="eggRow"></div>
     </div>
-
-    <!-- name entry -->
     <div id="nameCard" class="card hidden">
-      <p id="nameQ" class="en"></p>
-      <p id="nameJa" class="ja"></p>
-      <input id="nameInput" maxlength="10" autocomplete="off" spellcheck="false">
+      <p class="en">Hello! What's my name?</p>
+      <p class="ja">ペットの なまえを ローマじで かいてね</p>
+      <input id="nameInput" maxlength="10" autocomplete="off" spellcheck="false" placeholder="Pochi">
       <button id="nameOk" class="big">OK</button>
     </div>
-
-    <!-- farewell -->
     <div id="byeCard" class="card hidden">
       <div class="bigstar">🌟</div>
       <p id="byeEn" class="en"></p>
@@ -70,14 +79,12 @@
       <div id="byeStats"></div>
       <button id="newEggBtn" class="big">New egg 🥚</button>
     </div>
-
     <div id="tapEgg" class="hidden"><span class="en">Tap the egg!</span> <span class="ja">たまごを タップ！</span></div>
   </main>
 
-  <!-- categories -->
   <nav id="cats"></nav>
+  <div id="fxApp"></div>
 
-  <!-- modals -->
   <div id="modalBack" class="hidden">
     <div id="settings" class="modal hidden">
       <h2>⚙️ Teacher settings <small>せんせい よう</small></h2>
@@ -85,10 +92,16 @@
       <div class="row"><label>Time between requests<br><small>おねがいの かんかく</small></label><div class="seg" data-key="pace"></div></div>
       <div class="row"><label>Words on pictures<br><small>えに ことばを だす</small></label><div class="seg" data-key="labels"></div></div>
       <div class="row"><label>Japanese hint 💡<br><small>にほんごの ヒント</small></label><div class="seg" data-key="jaHint"></div></div>
+      <div class="row"><label>Shop<br><small>ショップ</small></label><div class="seg" data-key="shop"></div></div>
       <div class="row"><label>Start over<br><small>さいしょから</small></label><button id="resetBtn" class="danger">Reset pet</button></div>
-      <p class="credit">Tama Talk is an original game inspired by
-        <a href="https://github.com/autosam/Tamaweb" target="_blank" rel="noopener">Tamaweb</a> by autosam.
+      <p class="credit">Pet art, rooms, accessories and sounds: <a href="https://github.com/autosam/Tamaweb" target="_blank" rel="noopener">Tamaweb</a> by autosam (CC BY-NC-SA 4.0).
         Pets never die from missed care – they only grow old after a long life.</p>
+      <button class="big closeModal">Close</button>
+    </div>
+    <div id="shop" class="modal hidden">
+      <h2>🛍️ Shop <small>ショップ</small> <span class="wallet">⭐ <b id="shopStars">0</b></span></h2>
+      <div class="tabs"><button data-tab="acc" class="on">🎩 Accessories</button><button data-tab="room">🏠 Rooms</button></div>
+      <div id="shopGrid"></div>
       <button class="big closeModal">Close</button>
     </div>
     <div id="album" class="modal hidden">
@@ -106,7 +119,8 @@
 
 <script src="js/data.js"></script>
 <script src="js/needs.js"></script>
-<script src="js/sprites.js"></script>
+<script src="js/growth.js"></script>
+<script src="js/assets.js"></script>
 <script src="js/game.js"></script>
 </body>
 </html>
