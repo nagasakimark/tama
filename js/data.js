@@ -101,7 +101,7 @@ const ITEMS = [
   { id: 'boots', cat: 'wear', e: '👢', en: 'boots', a: 'boots', ja: 'ブーツ' },
 
   // ---------- STUDY ----------
-  { id: 'japanese', cat: 'study', e: 'あ', txt: 1, en: 'Japanese', ja: 'こくご' },
+  { id: 'japanese', cat: 'study', e: '🇯🇵', en: 'Japanese', ja: 'こくご' },
   { id: 'english', cat: 'study', e: '🔤', en: 'English', ja: 'えいご' },
   { id: 'math', cat: 'study', e: '🔢', en: 'math', ja: 'さんすう' },
   { id: 'science', cat: 'study', e: '🔬', en: 'science', ja: 'りか' },

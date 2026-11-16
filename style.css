@@ -165,11 +165,15 @@ button { font-family: inherit; cursor: pointer; border: none; }
 #app.tama #screenWrap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -46%); padding: 0; border-radius: 6px; background: #000;
   outline: 6px solid rgba(0,0,0,.25); box-shadow: none; }
 #app.tama #screen { width: 288px; height: 288px; border-radius: 6px; }
-#app.tama .icons { display: flex; position: absolute; left: 0; right: 0; justify-content: space-around; padding: 3px 4px; pointer-events: none; z-index: 5; }
+#app.tama .icons { display: flex; position: absolute; left: 0; right: 0; justify-content: space-around; padding: 3px 2px; pointer-events: none; z-index: 5; }
 #app.tama #iconsTop { top: 0; } #app.tama #iconsBot { bottom: 0; }
-.icons button { pointer-events: auto; width: 36px; height: 36px; border-radius: 50%; background: rgba(255,255,255,.4); font-size: 21px; line-height: 1; position: relative;
+.icons button { pointer-events: auto; width: 44px; height: 38px; border-radius: 10px; background: rgba(255,255,255,.75); font-size: 17px; line-height: 1; position: relative;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 0; }
+.icons button b { font-size: 10px; font-weight: 700; color: #3a2a14; letter-spacing: -.2px; }
+.icons button span { line-height: 1; }
+.icons button {
   filter: saturate(1.4); box-shadow: 0 2px 0 rgba(0,0,0,.15); }
-.icons button.sel { background: rgba(255,255,255,.95); box-shadow: 0 0 0 3px #ff7a1a; }
+.icons button.sel { background: #fff; box-shadow: 0 0 0 3px #ff7a1a; }
 .icons button.glow { animation: iconGlow .5s infinite alternate; }
 @keyframes iconGlow { to { background: #ffe14a; box-shadow: 0 0 0 4px #ffe14a; } }
 #app.tama #shellBtns { display: block; }

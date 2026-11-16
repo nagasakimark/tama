@@ -16,7 +16,7 @@ const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; 
 const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 const saved = load(SET_KEY, {});
-let settings = { life: 'normal', every: 45, maxWishes: 5, labels: false, shop: true, sound: saved.sound ?? true, view: saved.view || 'normal' };
+let settings = { life: 'normal', every: 45, maxWishes: 5, labels: true, shop: true, sound: saved.sound ?? true, view: saved.view || 'normal' };
 let shop = Object.assign({ stars: 0, acc: [], rooms: ['home_03'], wearing: null, room: 'home_03', shells: ['shell_13'], shell: 'shell_13' }, load(SHOP_KEY, {}));
 if (!shop.shells) { shop.shells = ['shell_13']; shop.shell = 'shell_13'; }
 let pet = load(SAVE_KEY, null);
@@ -77,14 +77,31 @@ function drawCell(c, im, cellNo, cs, x, y, flip, white) {
   else c.drawImage(src, ssx, ssy, cs, cs, x, y, cs, cs);
   c.restore();
 }
-function drawAcc(c, accId, cellNo, r, flip) {
+// Accessories are drawn for a "standard" adult. To make them fit every pet, we line the
+// accessory up with this pet's real head (top of the sprite) and scale it to its real width.
+const REF_TOP = 17, REF_W = 28, REF_CX = 32;   // standard adult inside the 64px accessory cell
+function drawAcc(c, accId, cellNo, r, flip, spriteId) {
   const im = img(`assets/acc/${accId}.png`);
   if (!im.complete || !im.naturalWidth) return;
-  const k = r.w / 32, size = 64 * k, i = cellNo - 1;
-  const dx = r.x + r.w / 2 - size / 2, dy = r.y + r.h / 2 - size / 2;
+  const i = cellNo - 1, sx = (i % 4) * 64, sy = Math.floor(i / 4) * 64;
+  const pb = spriteId && BBOX[spriteId], ab = ACC_BBOX[accId];
+  let dx, dy, size;
+  if (pb && ab && ab[i * 4 + 2]) {
+    const [l, t, rt] = pb.slice(i * 4, i * 4 + 3), [l1, t1, r1] = pb.slice(0, 3);
+    const s = Math.max(0.4, Math.min(1.25, (r1 - l1) / REF_W));       // size from the pet's width
+    const a1x = (ab[0] + ab[2]) / 2, a1t = ab[1];                       // accessory in frame 1
+    const akx = (ab[i * 4] + ab[i * 4 + 2]) / 2, akt = ab[i * 4 + 1];   // accessory in this frame
+    const cx = (l + rt) / 2;                                            // pet head in this frame
+    size = 64 * s;
+    dx = cx + (a1x - REF_CX) * s - akx * s;
+    dy = t + (a1t - REF_TOP) * s - akt * s;
+  } else { // no data: old centred placement
+    size = 64 * r.w / 32; dx = r.w / 2 - size / 2; dy = r.h / 2 - size / 2;
+  }
   c.save();
-  if (flip) { c.translate(dx + size, dy); c.scale(-1, 1); c.drawImage(im, (i % 4) * 64, Math.floor(i / 4) * 64, 64, 64, 0, 0, size, size); }
-  else c.drawImage(im, (i % 4) * 64, Math.floor(i / 4) * 64, 64, 64, dx, dy, size, size);
+  c.translate(r.x, r.y);
+  if (flip) { c.translate(r.w, 0); c.scale(-1, 1); }
+  c.drawImage(im, sx, sy, 64, 64, dx, dy, size, size);
   c.restore();
 }
 
@@ -130,10 +147,10 @@ function render(t) {
       const rr = { ...r, y: r.y + bob };
       const im = img(charSrc(pet.sprite));
       const acc = f.name === 'sleep' ? null : ACCS.find(a => a.id === shop.wearing);
-      if (acc && !acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip);
+      if (acc && !acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip, pet.sprite);
       drawCell(ctx, im, f.cell, r.w, rr.x, rr.y, flip, view.flash && Math.floor(t / 90) % 2);
-      if (acc && acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip);
-      if (view.halo) drawAcc(ctx, 'angel_halo_01', 1, rr, false);
+      if (acc && acc.front && !view.flash) drawAcc(ctx, acc.id, f.cell, rr, flip, pet.sprite);
+      if (view.halo) drawAcc(ctx, 'angel_halo_01', 1, rr, false, pet.sprite);
     }
     ctx.globalAlpha = 1;
   }
@@ -239,7 +256,7 @@ function buildCats() {
     b.onclick = () => onCat(c);
     nav.appendChild(b);
     const ic = document.createElement('button');
-    ic.dataset.cat = c.id; ic.textContent = c.e; ic.title = c.en;
+    ic.dataset.cat = c.id; ic.innerHTML = `<span>${c.e}</span><b>${c.en}</b>`; ic.title = c.en;
     ic.onclick = () => { selIcon = i; markIcon(); onCat(c); };
     (i < Math.ceil(list.length / 2) ? $('iconsTop') : $('iconsBot')).appendChild(ic);
   });
@@ -670,10 +687,11 @@ function renderShop() {
       const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
       const draw = () => {
         c.clearRect(0, 0, 64, 64);
-        const r = { x: 16, y: 16, w: 32, h: 32 };
-        if (!it.front) drawAcc(c, it.id, 1, r, false);
-        if (pet && pet.stage > 0) drawCell(c, img(charSrc(pet.sprite)), 1, cell(), 32 - cell() / 2, 48 - cell(), false);
-        if (it.front) drawAcc(c, it.id, 1, r, false);
+        const has = pet && pet.stage > 0, cs = has ? cell() : 32;
+        const r = { x: 32 - cs / 2, y: 50 - cs, w: cs, h: cs }, sp = has ? pet.sprite : null;
+        if (!it.front) drawAcc(c, it.id, 1, has ? r : { x: 16, y: 16, w: 32, h: 32 }, false, sp);
+        if (has) drawCell(c, img(charSrc(pet.sprite)), 1, cs, r.x, r.y, false);
+        if (it.front) drawAcc(c, it.id, 1, has ? r : { x: 16, y: 16, w: 32, h: 32 }, false, sp);
       };
       const im = img(`assets/acc/${it.id}.png`); if (im.complete) draw(); else im.addEventListener('load', draw);
     } else if (shopTab === 'room') {
