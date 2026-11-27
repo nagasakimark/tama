@@ -94,7 +94,7 @@ const EVENTS = [
     wishes: [{ en: "Happy New Year! Let's go to the shrine!", ok: ['shrine'] }, { en: "It's cold. I want hot chocolate.", ok: ['cocoa'] }] },
   { id: 'setsubun', from: [2, 1], to: [2, 3], hi: 'Devils out! Luck in!', decor: '👹', gift: { stars: 5, line: 'Throw the beans! Here are some stars!' },
     wishes: [{ en: 'I want a rice ball!', ok: ['riceball'] }] },
-  { id: 'valentine', from: [2, 10], to: [2, 14], hi: "Happy Valentine's Day!", decor: '💝', gift: { stars: 5, line: 'This chocolate is for you!' },
+  { id: 'valentine', from: [2, 10], to: [2, 14], hi: "Happy Valentine's Day!", decor: '💝', art: [['furn/gift_valentine', 62, 64], ['furn/bear_valentine', 78, 70]], gift: { stars: 5, line: 'This chocolate is for you!' },
     wishes: [{ en: "It's Valentine's Day! I want chocolate!", ok: ['chocolate'] }] },
   { id: 'hina', from: [3, 1], to: [3, 3], hi: "Happy Girls' Day!", decor: '🎎', gift: { stars: 5, line: 'Here are some stars for you!' }, wishes: [] },
   { id: 'children', from: [5, 1], to: [5, 5], hi: "Happy Children's Day!", decor: '🎏', gift: { stars: 5, line: 'Here are some stars for you!' },
@@ -103,9 +103,9 @@ const EVENTS = [
     wishes: [{ en: 'My Tanabata wish: I want to be a singer!', ok: ['sing'] }] },
   { id: 'summer', from: [8, 1], to: [8, 20], hi: "It's summer vacation!", decor: '🍉', gift: { stars: 5, line: 'Here is a summer present!' },
     wishes: [{ en: "It's hot! Let's go to the sea!", ok: ['sea', 'swim'] }, { en: "It's hot! I want shaved ice!", ok: ['shavedice'] }] },
-  { id: 'halloween', from: [10, 20], to: [10, 31], hi: 'Trick or treat!', reply: 'Happy Halloween!', decor: '🎃', gift: { acc: 'pumpkin_01', line: 'Here is a pumpkin for you!' },
+  { id: 'halloween', from: [10, 20], to: [10, 31], hi: 'Trick or treat!', reply: 'Happy Halloween!', decor: '🎃', art: [['furn/big_pumpkin', 60, 62], ['furn/small_pumpkin', 82, 74]], gift: { acc: 'pumpkin_01', line: 'Here is a pumpkin for you!' },
     wishes: [{ en: 'Trick or treat! I want chocolate!', ok: ['chocolate'] }, { en: 'Trick or treat! I want cookies!', ok: ['cookie'] }] },
-  { id: 'christmas', from: [12, 1], to: [12, 25], hi: 'Merry Christmas!', decor: '🎄', gift: { acc: 'santa_hat_01', line: 'Here is a Santa hat for you!' },
+  { id: 'christmas', from: [12, 1], to: [12, 25], hi: 'Merry Christmas!', decor: '🎄', art: [['misc/xmas_tree_01', 60, 12]], gift: { acc: 'santa_hat_01', line: 'Here is a Santa hat for you!' },
     wishes: [{ en: "It's Christmas! I want cake!", ok: ['cake'] }, { en: "It's Christmas! I want fried chicken!", ok: ['chicken'] }, { en: "It's snowy. I want a scarf.", ok: ['scarf'] }] },
 ];
 function eventToday(d = window.__testDate || new Date()) {
@@ -121,124 +121,171 @@ function eventNeed() {
   return { key: 'ev:' + w.en, en: w.en, ja: '', ok, tries: 0 };
 }
 
-// ---------------------------------------------------------------- room decorations (toys + holiday)
-function decorHtml() {
-  const ev = eventToday();
-  let h = ev ? `<span class="decor ev">${ev.decor}</span>` : '';
-  world.toys.slice(-4).forEach((t, i) => { h += `<span class="decor toy" style="left:${4 + i * 9}%">${TOYS.find(x => x.id === t)?.e || ''}</span>`; });
-  return h;
+// ================================================================ ORIGINAL ARTWORK HELPERS
+// Tamaweb sprite sheets: foods 24px (33 cols), items/toys 22px (10 cols), plants 24px (28 cols)
+const SHEETS = { food: ['assets/item/foods.png', 24, 33], item: ['assets/item/items.png', 22, 10], plant: ['assets/item/plants.png', 24, 28] };
+const FOOD_SPR = { bread: 542, pizza: 515, hamburger: 2, sushi: 605, spaghetti: 219, ramen: 590, chicken: 460, salad: 323, riceball: 800,
+  icecream: 1024, cake: 998, donut: 954, juice: 905, milk: 1036, banana: 960, curry: 536, takoyaki: 1068, pancakes: 806 };
+const TOYS = [
+  { id: 'bear', spr: 10, en: 'teddy bear' }, { id: 'ball', spr: 4, en: 'ball' }, { id: 'robot', spr: 15, en: 'robot' },
+  { id: 'skate', spr: 11, en: 'skateboard' }, { id: 'game', spr: 14, en: 'video game' }, { id: 'cube', spr: 12, en: 'puzzle cube' },
+  { id: 'music', spr: 3, en: 'music player' }, { id: 'fox', spr: 1, en: 'toy fox' },
+];
+const CROPS = [ // first plant cell; +1 growing, +2 ready
+  { id: 'tomato', spr: 33, pl: 'tomatoes' }, { id: 'carrot', spr: 41, pl: 'carrots' }, { id: 'potato', spr: 45, pl: 'potatoes' },
+  { id: 'sweetpotato', spr: 49, pl: 'sweet potatoes' }, { id: 'watermelon', spr: 53, pl: 'watermelons' }, { id: 'peach', spr: 57, pl: 'peaches' },
+  { id: 'cabbage', spr: 29, pl: 'cabbages' },
+];
+function drawSheet(c, sheet, n, x, y, size) {
+  const [src, cs, cols] = SHEETS[sheet], im = img(src);
+  if (!im.complete || !im.naturalWidth) return;
+  const i = n - 1; size = size || cs;
+  c.drawImage(im, (i % cols) * cs, Math.floor(i / cols) * cs, cs, cs, Math.round(x), Math.round(y), size, size);
 }
-
-// ---------------------------------------------------------------- the activity panel
-function actOpen(title, bg) {
-  $('act').classList.remove('hidden');
-  $('actTitle').textContent = title;
-  $('actBody').innerHTML = '';
-  $('act').style.setProperty('--act-bg', bg ? `url(${bgSrc(bg)})` : 'none');
-  $('act').classList.toggle('hasbg', !!bg);
-  return $('actBody');
-}
-function actClose() { $('act').classList.add('hidden'); $('actBody').innerHTML = ''; }
-const wait = el => new Promise(r => el.addEventListener('click', r, { once: true }));
-function h(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; }
-
-// pixel sprite as a canvas element
-function spriteEl(id, scale = 4, frame = 1, flip = false, acc = null) {
-  const cv = document.createElement('canvas'); cv.className = 'spr';
-  const im = img(charSrc(id));
-  const draw = () => {
-    const cs = im.naturalWidth / 4; cv.width = cv.height = 48;
-    const c = cv.getContext('2d'); c.imageSmoothingEnabled = false;
-    const r = { x: 24 - cs / 2, y: 46 - cs, w: cs, h: cs };
-    const a = acc && ACCS.find(x => x.id === acc);
-    if (a && !a.front) drawAcc(c, a.id, frame, r, flip, id);
-    drawCell(c, im, frame, cs, r.x, r.y, flip);
-    if (a && a.front) drawAcc(c, a.id, frame, r, flip, id);
-    cv.style.width = cv.style.height = 48 * scale + 'px';
-  };
-  if (im.complete && im.naturalWidth) draw(); else im.addEventListener('load', draw);
+function drawPic(c, name, x, y) { const im = img(`assets/${name}.png`); if (im.complete && im.naturalWidth) c.drawImage(im, Math.round(x), Math.round(y)); }
+function picSize(name) { const im = img(`assets/${name}.png`); return [im.naturalWidth || 0, im.naturalHeight || 0]; }
+// a sprite as a button icon
+function icon(sheet, n, px = 64) {
+  const cv = document.createElement('canvas'), cs = SHEETS[sheet][1]; cv.width = cv.height = cs; cv.className = 'pix'; cv.style.width = cv.style.height = px + 'px';
+  const go = () => { const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; drawSheet(c, sheet, n, 0, 0); };
+  const im = img(SHEETS[sheet][0]); if (im.complete) go(); else im.addEventListener('load', go);
   return cv;
 }
-function myPet(scale = 4, frame = 1, flip = false) { return spriteEl(pet.sprite, scale, frame, flip, shop.wearing); }
-
-// a question with answer buttons. Returns the number of wrong tries.
-async function choose(box, items, isRight, { onWrong } = {}) {
-  let wrongs = 0;
-  return new Promise(res => {
-    box.innerHTML = '';
-    items.forEach(it => {
-      const b = h(`<button class="choice">${it.html}</button>`);
-      b.onclick = async () => {
-        if (b.disabled) return;
-        if (isRight(it)) { b.classList.add('right'); sfx('task_complete.ogg', .4); box.querySelectorAll('button').forEach(x => x.disabled = true); await sleep(500); res(wrongs); }
-        else { wrongs++; b.classList.add('wrong'); b.disabled = true; sfx('refuse.ogg', .4); onWrong && onWrong(it); }
-      };
-      box.appendChild(b);
-    });
-  });
+function picIcon(name, px = 72) {
+  const i = new Image(); i.src = `assets/${name}.png`; i.className = 'pix'; i.style.height = px + 'px'; return i;
 }
-function itemHtml(it) { return `<span class="ce">${it.e}</span><span class="cl">${it.en}</span>`; }
+// draw any character (friends, customers) standing on the floor
+function drawChar(c, id, x, feet, cellNo = 1, flip = false) {
+  const im = img(charSrc(id)); if (!im.complete || !im.naturalWidth) return;
+  const cs = im.naturalWidth / 4; drawCell(c, im, cellNo, cs, Math.round(x - cs / 2), Math.round(feet - cs), flip);
+}
+// draw our pet (with its accessory) – uses view.x / view.jump so hearts and stars appear in the right place
+function drawMe(c, t, cellNo, flip = false) {
+  const r = petRect(), acc = ACCS.find(a => a.id === shop.wearing);
+  const sh = img('assets/misc/shadow_01.png');
+  if (sh.complete && !view.jump) { c.globalAlpha = .35; c.drawImage(sh, r.x + r.w * .05, FEET - r.w * .22, r.w * .9, r.w * .45); c.globalAlpha = 1; }
+  if (acc && !acc.front) drawAcc(c, acc.id, cellNo, r, flip, pet.sprite);
+  drawCell(c, img(charSrc(pet.sprite)), cellNo, r.w, r.x, r.y, flip);
+  if (acc && acc.front) drawAcc(c, acc.id, cellNo, r, flip, pet.sprite);
+}
+function animCell(name, t) { const a = ANIM[name] || ANIM.idle; return a.f[Math.floor(t / a.t) % a.f.length]; }
+// standard pet behaviour inside a scene: walks to view.tx, plays view.anim
+function meCell(t) {
+  if (view.anim && t < view.animUntil) return animCell(view.anim, t);
+  if (Math.abs(view.tx - view.x) > 0.4) return animCell('walk', t);
+  return animCell('idle', t);
+}
+function stepMe() {
+  if (Math.abs(view.tx - view.x) > 0.3) { view.flip = view.tx > view.x; view.x += Math.sign(view.tx - view.x) * Math.min(0.5, Math.abs(view.tx - view.x)); }
+}
 
-// ================================================================ MINI-GAMES
-const COUNTABLE = () => byCat('food').filter(i => /s$/.test(i.pl) && i.pl !== i.a && !/ /.test(i.pl));
+// ---------------------------------------------------------------- room decorations (original art drawn in the room)
+function decorHtml() { const ev = eventToday(); return ev && !ev.art ? `<span class="decor ev">${ev.decor}</span>` : ''; }
+function drawDecor(c) {
+  const ev = eventToday();
+  if (ev && ev.art) ev.art.forEach(([n, x, y]) => drawPic(c, n, x, y));
+  world.toys.slice(-3).forEach((id, i) => { const t = TOYS.find(x => x.id === id); if (t) drawSheet(c, 'item', t.spr, 2 + i * 13, FEET - 12, 14); });
+}
 
-async function gameCatch() {
-  const body = actOpen('🎮 Catch game!', 'park');
-  const pool = COUNTABLE(), target = rnd(pool), others = pickN(pool.filter(i => i.id !== target.id), 3), GOAL = 6;
-  body.innerHTML = `<div class="gline">Catch ${GOAL} ${target.pl}!</div><div class="catch"><div class="gscore">0 / ${GOAL}</div><div class="gtime"></div></div><div class="ghelp">👆 Move</div>`;
-  const area = body.querySelector('.catch');
-  const me = myPet(2.4, 1); me.classList.add('catcher'); area.appendChild(me);
-  let px = 400, caught = 0, items = [], running = true, t0 = performance.now(), last = 0;
-  const W = () => area.clientWidth, H = () => area.clientHeight;
-  area.addEventListener('pointermove', e => { const r = area.getBoundingClientRect(); px = (e.clientX - r.left) / (r.width / W()); });
-  area.addEventListener('pointerdown', e => { const r = area.getBoundingClientRect(); px = (e.clientX - r.left) / (r.width / W()); });
-  return new Promise(res => {
-    const step = t => {
-      if (!running) return;
-      const left = Math.max(0, 30 - (t - t0) / 1000);
-      body.querySelector('.gtime').textContent = '⏱ ' + Math.ceil(left);
-      if (t - last > 650) {
-        last = t;
-        const it = Math.random() < 0.45 ? target : rnd(others);
-        const el = h(`<div class="faller">${it.e}</div>`);
-        const o = { it, el, x: 40 + Math.random() * (W() - 80), y: -60, v: 2.2 + Math.random() * 1.4 };
-        area.appendChild(el); items.push(o);
-      }
-      me.style.left = (px - 58) + 'px';
-      for (const o of items) {
-        o.y += o.v; o.el.style.transform = `translate(${o.x - 30}px, ${o.y}px)`;
-        if (!o.done && o.y > H() - 130 && o.y < H() - 60 && Math.abs(o.x - px) < 70) {
-          o.done = true; o.el.remove();
-          if (o.it.id === target.id) { caught++; sfx('eat.ogg', .4); body.querySelector('.gscore').textContent = `${caught} / ${GOAL}`; }
-          else { sfx('refuse.ogg', .3); body.querySelector('.gline').textContent = `No! That's not ${target.a}!`; setTimeout(() => body.querySelector('.gline') && (body.querySelector('.gline').textContent = `Catch ${GOAL} ${target.pl}!`), 1200); }
-        }
-        if (o.y > H()) { o.done = true; o.el.remove(); }
-      }
-      items = items.filter(o => !o.done);
-      if (caught >= GOAL || left <= 0) { running = false; return res(endGame(caught >= GOAL, `I caught ${caught} ${caught === 1 ? target.en : target.pl}!`, 'I played a catch game.')); }
-      requestAnimationFrame(step);
+// ---------------------------------------------------------------- the activity frame: screen + bubble (left) + answers (right)
+window.actScene = null;
+function scene(bg, def) {
+  setBg(bg); $('emojiLayer').innerHTML = ''; place = bg;
+  window.actScene = def; $('app').classList.add('inact');
+}
+function endScene() { window.actScene = null; $('app').classList.remove('inact'); panelClose(); $('bubbleWho').classList.add('hidden'); hideBubble(); }
+function talk(text, who = '', html = null) {
+  showBubble(text, { reply: false });
+  if (html) $('bubbleText').innerHTML = html;
+  $('bubbleBtns').classList.add('hidden');
+  $('bubbleWho').textContent = who; $('bubbleWho').classList.toggle('hidden', !who);
+}
+function panel(title, html = '') {
+  $('tray').classList.add('hidden'); $('profile').classList.add('hidden');
+  $('actPanel').classList.remove('hidden');
+  $('apHead').innerHTML = title; $('apBody').innerHTML = html;
+  return $('apBody');
+}
+function panelClose() { $('actPanel').classList.add('hidden'); $('profile').classList.remove('hidden'); }
+const wait = el => new Promise(r => el.addEventListener('click', r, { once: true }));
+function h(html) { const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstElementChild; }
+// answer buttons in the right panel. opts: [{label, icon (element), ...}] → number of wrong tries
+function choose(title, opts, isRight, { cols = 2, onWrong, onRight } = {}) {
+  const box = panel(title);
+  const grid = h(`<div class="agrid" style="grid-template-columns:repeat(${cols},1fr)"></div>`); box.appendChild(grid);
+  let wrongs = 0;
+  return new Promise(res => opts.forEach(o => {
+    const b = h(`<button class="abtn${o.icon ? '' : ' txt'}"></button>`);
+    if (o.icon) b.appendChild(o.icon);
+    if (o.label) b.appendChild(h(`<span class="al">${o.label}</span>`));
+    b.onclick = async () => {
+      if (b.disabled) return;
+      if (isRight(o)) { b.classList.add('right'); grid.querySelectorAll('button').forEach(x => x.disabled = true); sfx('task_complete.ogg', .4); onRight && onRight(o); await sleep(600); res(wrongs); }
+      else { wrongs++; b.classList.add('wrong'); b.disabled = true; sfx('refuse.ogg', .4); setAnim('refuse', 900); onWrong && onWrong(o); }
     };
-    requestAnimationFrame(step);
+    grid.appendChild(b);
+  }));
+}
+async function okButton(label = 'OK') { const b = h(`<button class="big">${label}</button>`); $('apBody').appendChild(b); await wait(b); }
+
+// ================================================================ MINI-GAMES (like the original's: they happen in the screen)
+const CATCH_TARGETS = [['banana', 'bananas'], ['hamburger', 'hamburgers'], ['riceball', 'rice balls'], ['donut', 'donuts']];
+async function gameCatch() {
+  const [tid, tpl] = rnd(CATCH_TARGETS), GOAL = 6;
+  const others = Object.keys(FOOD_SPR).filter(k => k !== tid);
+  let caught = 0, items = [], last = 0, t0 = performance.now(), mx = 48, done = false;
+  view.x = view.tx = 48;
+  talk(`Catch ${GOAL} ${tpl}!`);
+  const box = panel('🎮 Catch game');
+  box.appendChild(icon('food', FOOD_SPR[tid], 72)); box.appendChild(h(`<div class="aword">${tpl}</div>`));
+  const score = h(`<div class="ascore">0 / ${GOAL}</div>`), timer = h(`<div class="atime">⏱ 30</div>`), help = h(`<div class="ahelp">👆 Move your pet on the screen</div>`);
+  box.append(score, timer, help);
+  return new Promise(res => {
+    scene('park2', {
+      move: x => { mx = x; },
+      draw(c, t) {
+        const left = Math.max(0, 30 - (t - t0) / 1000);
+        timer.textContent = '⏱ ' + Math.ceil(left);
+        if (!done && t - last > 800) { last = t; items.push({ id: Math.random() < .45 ? tid : rnd(others), x: 8 + Math.random() * 80, y: -16, v: .35 + Math.random() * .25 }); }
+        view.tx = Math.max(10, Math.min(86, mx));
+        stepMe();
+        const r = petRect();
+        for (const o of items) {
+          o.y += o.v; drawSheet(c, 'food', FOOD_SPR[o.id], o.x - 8, o.y, 16);
+          if (!o.gone && o.y + 14 > r.y + 4 && o.y < FEET - 4 && Math.abs(o.x - view.x) < r.w / 2 + 4) {
+            o.gone = true;
+            if (o.id === tid) { caught++; score.textContent = `${caught} / ${GOAL}`; sfx('eat.ogg', .4); setAnim('eat', 400); burst('heart', 1); }
+            else { sfx('refuse.ogg', .3); setAnim('refuse', 600); talk(`No! That's not ${ITEM[tid].a}!`); setTimeout(() => !done && talk(`Catch ${GOAL} ${tpl}!`), 1200); }
+          }
+          if (o.y > 96) o.gone = true;
+        }
+        items = items.filter(o => !o.gone);
+        drawMe(c, t, meCell(t), Math.abs(view.tx - view.x) > .4 && view.flip);
+        if (!done && (caught >= GOAL || left <= 0)) { done = true; res(gameEnd(caught >= GOAL, `I caught ${caught} ${caught === 1 ? ITEM[tid].en : tpl}!`, 'I played a catch game.')); }
+      },
+    });
   });
 }
 
 async function gameNumber() {
-  const body = actOpen('🎮 Guess my number!', null);
-  const max = pet.stage >= 3 ? 50 : 20, n = 1 + Math.floor(Math.random() * max), maxTries = max === 50 ? 7 : 5;
-  body.innerHTML = `<div class="nrow"><div class="npet"></div><div class="gbub">I'm thinking of a number from 1 to ${max}. What is it?</div></div><div class="grid${max === 50 ? ' g50' : ''}"></div><div class="gscore">Tries: 0 / ${maxTries}</div>`;
-  body.querySelector('.npet').appendChild(myPet(2.6, 1));
-  const grid = body.querySelector('.grid'), bub = body.querySelector('.gbub');
-  let tries = 0;
+  const max = pet.stage >= 3 ? 30 : 10, n = 1 + Math.floor(Math.random() * max), maxTries = max === 30 ? 5 : 4;
+  view.x = view.tx = 48;
+  scene('arcade2', { draw(c, t) { stepMe(); drawMe(c, t, meCell(t)); } });
+  talk(`I'm thinking of a number from 1 to ${max}. What is it?`);
+  const box = panel(`🎮 Guess my number`);
+  const grid = h(`<div class="agrid nums" style="grid-template-columns:repeat(${max === 30 ? 6 : 5},1fr)"></div>`), tries = h(`<div class="ascore">Tries: 0 / ${maxTries}</div>`);
+  box.append(grid, tries);
+  let k = 0;
   return new Promise(res => {
     for (let i = 1; i <= max; i++) {
-      const b = h(`<button class="nb">${i}</button>`);
+      const b = h(`<button class="abtn txt num">${i}</button>`);
       b.onclick = async () => {
-        tries++; body.querySelector('.gscore').textContent = `Tries: ${tries} / ${maxTries}`;
-        if (i === n) { b.classList.add('right'); bub.textContent = `Yes! It's ${n}!`; sfx('cheer.ogg', .5); grid.querySelectorAll('button').forEach(x => x.disabled = true); await sleep(1200); return res(endGame(true, `You got it in ${tries} ${tries === 1 ? 'try' : 'tries'}!`, 'I played a number game.')); }
-        sfx('pop_01.mp3', .4);
-        bub.textContent = i < n ? `No. It's bigger than ${i}.` : `No. It's smaller than ${i}.`;
+        k++; tries.textContent = `Tries: ${k} / ${maxTries}`;
+        if (i === n) { b.classList.add('right'); talk(`Yes! It's ${n}!`); setAnim('cheer', 1500); sfx('cheer.ogg', .5); grid.querySelectorAll('button').forEach(x => x.disabled = true); await sleep(1500); return res(gameEnd(true, `You got it in ${k} ${k === 1 ? 'try' : 'tries'}!`, 'I played a number game.')); }
+        sfx('pop_01.mp3', .4); setAnim('refuse', 700);
+        talk(i < n ? `No. It's bigger than ${i}.` : `No. It's smaller than ${i}.`);
         grid.querySelectorAll('button').forEach(x => { const v = +x.textContent; if ((i < n && v <= i) || (i > n && v >= i)) { x.disabled = true; x.classList.add('out'); } });
-        if (tries >= maxTries) { bub.textContent = `It was ${n}!`; grid.querySelectorAll('button').forEach(x => x.disabled = true); await sleep(1500); res(endGame(false, `It was ${n}. Let's play again next time!`, 'I played a number game.')); }
+        if (k >= maxTries) { grid.querySelectorAll('button').forEach(x => x.disabled = true); talk(`It was ${n}!`); await sleep(1600); res(gameEnd(false, `It was ${n}. Let's play again next time!`, 'I played a number game.')); }
       };
       grid.appendChild(b);
     }
@@ -246,87 +293,94 @@ async function gameNumber() {
 }
 
 const MOVES = [
-  { id: 'jump', en: 'Jump!', e: '⬆️', lb: 'jump' }, { id: 'left', en: 'Go left!', e: '⬅️', lb: 'go left' },
-  { id: 'right', en: 'Go right!', e: '➡️', lb: 'go right' }, { id: 'sit', en: 'Sit down!', e: '🪑', lb: 'sit down' },
-  { id: 'stand', en: 'Stand up!', e: '🧍', lb: 'stand up' }, { id: 'turn', en: 'Turn around!', e: '🔄', lb: 'turn around' },
-  { id: 'clap', en: 'Clap your hands!', e: '👏', lb: 'clap' }, { id: 'dance', en: 'Dance!', e: '💃', lb: 'dance' },
+  { id: 'jump', en: 'Jump!' }, { id: 'left', en: 'Go left!' }, { id: 'right', en: 'Go right!' }, { id: 'sit', en: 'Sit down!' },
+  { id: 'turn', en: 'Turn around!' }, { id: 'clap', en: 'Clap your hands!' }, { id: 'dance', en: 'Dance!' }, { id: 'sleep', en: 'Go to sleep!' },
 ];
+async function doMove(m) {
+  view.x = view.tx = 48;
+  if (m.id === 'jump') { sfx('jump.ogg', .4); await hop(1, 8); }
+  else if (m.id === 'left') { view.tx = 26; await sleep(900); view.tx = 48; await sleep(500); }
+  else if (m.id === 'right') { view.tx = 70; await sleep(900); view.tx = 48; await sleep(500); }
+  else if (m.id === 'sit') { setAnim('sit', 1300); await sleep(1300); }
+  else if (m.id === 'turn') { setAnim('side', 1300); for (let i = 0; i < 4; i++) { view.flip = !view.flip; await sleep(300); } }
+  else if (m.id === 'clap') { setAnim('cheer', 1300); await sleep(1300); }
+  else if (m.id === 'dance') { setAnim('cheer', 1300); for (let i = 0; i < 4; i++) { view.flip = !view.flip; await hop(1, 3); } }
+  else if (m.id === 'sleep') { setAnim('sleep', 1300); burst('z', 2); await sleep(1300); }
+  view.tx = view.x = 48;
+}
 async function gameSimon() {
-  const body = actOpen('🎮 Copy me!', null);
   const lens = pet.stage >= 3 ? [2, 3, 4] : [2, 3];
-  body.innerHTML = `<div class="nrow"><div class="npet"></div><div class="gbub">Watch me! Then copy me!</div></div><div class="moves"></div><div class="gscore"></div>`;
-  const me = myPet(2.6, 1); body.querySelector('.npet').appendChild(me);
-  const bub = body.querySelector('.gbub'), box = body.querySelector('.moves');
-  MOVES.forEach(m => box.appendChild(h(`<button class="choice" data-m="${m.id}" disabled><span class="ce">${m.e}</span><span class="cl">${m.lb}</span></button>`)));
+  view.x = view.tx = 48; let showing = null;
+  scene('gym', { draw(c, t) { stepMe(); const sideways = view.anim === 'side' && t < view.animUntil; drawMe(c, t, meCell(t), (Math.abs(view.tx - view.x) > .4 || sideways) && view.flip); } });
   let wins = 0;
   for (let r = 0; r < lens.length; r++) {
     const seq = Array.from({ length: lens[r] }, () => rnd(MOVES));
     for (let attempt = 0; attempt < 2; attempt++) {
-      body.querySelector('.gscore').textContent = `Round ${r + 1} / ${lens.length}`;
-      box.querySelectorAll('button').forEach(b => b.disabled = true);
-      bub.textContent = 'Watch!'; await sleep(900);
-      for (const m of seq) { bub.textContent = m.en; bub.classList.remove('pop'); void bub.offsetWidth; bub.classList.add('pop'); sfx('jump.ogg', .3); me.style.transform = m.id === 'jump' ? 'translateY(-20px)' : m.id === 'left' ? 'translateX(-20px)' : m.id === 'right' ? 'translateX(20px)' : m.id === 'turn' ? 'scaleX(-1)' : m.id === 'sit' ? 'translateY(12px)' : ''; await sleep(1300); me.style.transform = ''; bub.textContent = '…'; await sleep(250); }
-      bub.textContent = 'Your turn!';
-      box.querySelectorAll('button').forEach(b => b.disabled = false);
+      panel(`🎮 Copy me! &nbsp;Round ${r + 1}/${lens.length}`, '<div class="ahelp">👀 Watch your pet…</div>');
+      talk('Watch me!'); await sleep(1000);
+      for (const m of seq) { talk(m.en); await doMove(m); await sleep(200); }
+      talk('Your turn! What did I do?');
       const ok = await new Promise(res => {
-        let i = 0;
-        box.querySelectorAll('button').forEach(b => b.onclick = () => {
-          if (b.dataset.m === seq[i].id) { i++; b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 250); sfx('pop_01.mp3', .3); if (i === seq.length) res(true); }
-          else res(false);
-        });
+        let i = 0; const box = panel(`🎮 Copy me! &nbsp;Round ${r + 1}/${lens.length}`, `<div class="ahelp">Tap them in order (${seq.length})</div>`);
+        const grid = h('<div class="agrid" style="grid-template-columns:repeat(2,1fr)"></div>'); box.appendChild(grid);
+        MOVES.forEach(m => { const b = h(`<button class="abtn txt">${m.en}</button>`); b.onclick = () => { if (m.id === seq[i].id) { i++; b.classList.add('flash'); setTimeout(() => b.classList.remove('flash'), 300); sfx('pop_01.mp3', .3); if (i === seq.length) res(true); } else res(false); }; grid.appendChild(b); });
       });
-      if (ok) { wins++; bub.textContent = 'Great!'; sfx('cheer.ogg', .4); await sleep(900); break; }
-      bub.textContent = attempt === 0 ? 'Oops! Watch again!' : 'Oops! Next one!'; sfx('refuse.ogg', .3); await sleep(1100);
+      if (ok) { wins++; talk('Great!'); setAnim('cheer', 900); sfx('cheer.ogg', .4); await sleep(1000); break; }
+      talk(attempt === 0 ? 'Oops! Watch again!' : 'Oops! Next one!'); setAnim('refuse', 900); sfx('refuse.ogg', .3); await sleep(1200);
     }
   }
-  return endGame(wins === lens.length, `You copied ${wins} of ${lens.length}!`, 'I played Copy Me.');
+  return gameEnd(wins === lens.length, `You copied ${wins} of ${lens.length}!`, 'I played Copy Me.');
 }
 
+const SPELL = [['food', 'bread', 'BREAD'], ['food', 'pizza', 'PIZZA'], ['food', 'sushi', 'SUSHI'], ['food', 'salad', 'SALAD'], ['food', 'cake', 'CAKE'],
+  ['food', 'milk', 'MILK'], ['food', 'banana', 'BANANA'], ['food', 'ramen', 'RAMEN'], ['food', 'donut', 'DONUT'], ['item', 4, 'BALL'], ['item', 15, 'ROBOT'], ['item', 10, 'BEAR']];
 async function gameSpell() {
-  const body = actOpen('🎮 Balloon spelling!', 'sky');
-  const words = ITEMS.filter(i => ['food', 'drink', 'play', 'study', 'wear'].includes(i.cat) && /^[a-z]{3,6}$/.test(i.en) && unlocked(pet.stage, i.cat));
-  const w = rnd(words), word = w.en.toUpperCase();
-  const extra = 'ABCDEFGHIJKLMNOPRSTUW'.split('').filter(l => !word.includes(l));
-  const letters = shuffle([...word.split(''), ...pickN(extra, 3)]);
-  body.innerHTML = `<div class="spellTop"><span class="spic">${w.e}</span><span class="blanks">${word.split('').map(() => '<b>_</b>').join('')}</span></div><div class="sky"></div><div class="gline">Pop the letters in order!</div>`;
-  const sky = body.querySelector('.sky'), blanks = body.querySelectorAll('.blanks b');
+  const [sheet, key, word] = rnd(SPELL), spr = sheet === 'food' ? FOOD_SPR[key] : key;
+  view.x = view.tx = 34;
+  scene('classroom', { draw(c, t) {
+    drawMe(c, t, meCell(t));
+    drawPic(c, 'misc/thought_bubble_01', 50, 30);
+    const [bw, bh] = picSize('misc/thought_bubble_01');
+    drawSheet(c, sheet, spr, 50 + bw / 2 - 11, 30 + bh / 2 - 13, 22);
+  } });
+  const extra = shuffle('ABCDEFGHIKLMNOPRSTUW'.split('').filter(l => !word.includes(l))).slice(0, 3);
   let i = 0, wrong = 0;
-  return new Promise(res => {
-    const cols = ['#ff5a7a', '#ffb62e', '#4fc3ff', '#6fdc4a', '#c77dff', '#ff8a1f'];
-    letters.forEach((L, k) => {
-      const b = h(`<button class="balloon" style="left:${6 + k * (88 / letters.length)}%;--c:${cols[k % cols.length]};animation-delay:-${Math.random() * 6}s">${L}</button>`);
-      b.onclick = async () => {
-        if (L === word[i]) {
-          blanks[i].textContent = L; i++; b.classList.add('popped'); sfx('pop_01.mp3', .5);
-          if (i === word.length) { await sleep(600); res(endGame(wrong <= 2, `${w.en.charAt(0).toUpperCase() + w.en.slice(1)}! You spelled it!`, `I spelled "${w.en}".`)); }
-        } else { wrong++; b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); sfx('refuse.ogg', .3); }
-      };
-      sky.appendChild(b);
-    });
-  });
+  const show = () => talk('', '', `What is it? Spell it!<div class="blanks">${word.split('').map((L, k) => `<b>${k < i ? L : ''}</b>`).join('')}</div>`);
+  show();
+  const box = panel('🎮 Spelling');
+  const grid = h(`<div class="agrid" style="grid-template-columns:repeat(4,1fr)"></div>`); box.appendChild(grid);
+  return new Promise(res => shuffle([...word.split(''), ...extra]).forEach(L => {
+    const b = h(`<button class="abtn txt letter">${L}</button>`);
+    b.onclick = async () => {
+      if (L === word[i]) { i++; b.disabled = true; b.classList.add('right'); sfx('pop_01.mp3', .4); show();
+        if (i === word.length) { setAnim('cheer', 1500); await sleep(1300); res(gameEnd(wrong <= 2, `${word.charAt(0) + word.slice(1).toLowerCase()}! You spelled it!`, `I spelled "${word.toLowerCase()}".`)); } }
+      else { wrong++; b.classList.add('shake'); setTimeout(() => b.classList.remove('shake'), 400); sfx('refuse.ogg', .3); setAnim('refuse', 700); }
+    };
+    grid.appendChild(b);
+  }));
 }
 
-async function endGame(won, line, diary) {
-  const body = $('actBody');
-  const end = h(`<div class="endcard"><div class="endpet"></div><div class="endtxt">${won ? 'You win!' : 'Good try!'}</div><div class="endline">${line}</div><button class="big">OK</button></div>`);
-  end.querySelector('.endpet').appendChild(myPet(3, won ? 2 : 1));
-  body.appendChild(end); sfx(won ? 'cheer_success.ogg' : 'task_complete.ogg', .5);
+async function gameEnd(won, line, diary) {
+  talk(won ? `You win! ${line}` : `Good try! ${line}`);
+  setAnim(won ? 'cheer' : 'idle', 2000);
+  sfx(won ? 'cheer_success.ogg' : 'task_complete.ogg', .5);
   if (won) { confetti(); count('gamesWon'); }
-  await wait(end.querySelector('button'));
+  panel(won ? '🏆 You win!' : '👍 Good try!', `<div class="aword">${line}</div>`);
+  await okButton();
   return { good: won, stars: won ? 4 : 2, diary };
 }
 
-// ================================================================ FRIENDS
+// ================================================================ FRIENDS (another pet visits)
 const FRIEND_NAMES = ['Momo', 'Ken', 'Yui', 'Sora', 'Hana', 'Riku', 'Emma', 'Leo', 'Lily', 'Max', 'Mia', 'Taro'];
-function friendQuestions(f) {
+function friendQuestions() {
   const bd = pet.born ? new Date(pet.born) : new Date();
   const myBd = `My birthday is ${MONTHS[bd.getMonth()]} ${bd.getDate()}.`;
   const otherBd = `My birthday is ${MONTHS[(bd.getMonth() + 5) % 12]} ${((bd.getDate() + 9) % 28) + 1}.`;
   const sport = rnd(byCat('play').filter(i => i.sport)), food = rnd(byCat('food')), place = rnd(byCat('go'));
-  const subj = rnd(byCat('study')), canDo = rnd([['swim', 'swim'], ['cook', 'cook'], ['ride a bike', 'bike'], ['skate', 'skate'], ['play the piano', 'piano']]);
+  const subj = rnd(byCat('study')), canDo = rnd(['swim', 'cook', 'ride a bike', 'skate', 'play the piano']);
   const Q = [
     { q: `Do you like ${sport.en}?`, a: ['Yes, I do.', "No, I don't."], x: ['Yes, I can.', "I'm fine."] },
-    { q: `Can you ${canDo[0]}?`, a: ['Yes, I can.', "No, I can't."], x: ['Yes, I do.', "It's sunny."] },
+    { q: `Can you ${canDo}?`, a: ['Yes, I can.', "No, I can't."], x: ['Yes, I do.', "It's sunny."] },
     { q: 'When is your birthday?', a: [myBd], x: [otherBd, `I'm ${age()} years old.`] },
     { q: 'How old are you?', a: [`I'm ${age()} years old.`], x: [myBd, "I'm happy."] },
     { q: 'What do you want to eat?', a: [`I want ${food.a}.`], x: [`I like ${sport.en}.`, `I went to ${place.en}.`] },
@@ -345,219 +399,222 @@ async function visitFriend() {
   const name = known.length && (known.length >= 4 || Math.random() < 0.6) ? rnd(known) : rnd(FRIEND_NAMES.filter(n => !known.includes(n)));
   const isNew = !world.friends[name];
   const f = world.friends[name] = world.friends[name] || { sprite: rnd([...CHARS.teen, ...CHARS.adult]), hearts: 0 };
-  const body = actOpen(`🚪 ${name} is here!`, shop.room || 'home_03');
-  body.innerHTML = `<div class="duo"><div class="side me"></div><div class="talk"><div class="fbub"></div><div class="answers"></div></div><div class="side them"></div></div>`;
-  body.querySelector('.me').appendChild(myPet(3.2, 1));
-  body.querySelector('.them').appendChild(spriteEl(f.sprite, 3.2, 1, true));
-  const bub = body.querySelector('.fbub'), ans = body.querySelector('.answers');
-  const say2 = t => { bub.textContent = t; bub.classList.remove('pop'); void bub.offsetWidth; bub.classList.add('pop'); };
-  const opt = arr => arr.map(t => ({ html: t, t }));
+  let fx = 110, fAnim = 'walk', fUntil = 0;
+  view.x = view.tx = 30;
+  scene(shop.room || 'home_03', { draw(c, t) {
+    if (fx > 66) fx -= .5;
+    const fc = fx > 66 ? animCell('walk', t) : t < fUntil ? animCell(fAnim, t) : animCell('idle', t);
+    stepMe(); drawMe(c, t, meCell(t));
+    drawChar(c, f.sprite, fx, FEET, fc, false);
+  } });
+  const fsay = (txt, anim) => { talk(txt, name); if (anim) { fAnim = anim; fUntil = performance.now() + 1200; } };
+  const opt = arr => arr.map(t => ({ label: t, t }));
   let wrong = 0;
-  sfx('cute.ogg', .4);
+  sfx('cute.ogg', .4); await sleep(1000);
   if (isNew) {
-    say2(`Hi! I'm ${name}. What's your name?`);
-    wrong += await choose(ans, shuffle(opt([`I'm ${pet.name}.`, "I'm fine.", "I'm hungry."])), o => o.t === `I'm ${pet.name}.`);
-    say2(`Nice to meet you, ${pet.name}!`);
-    wrong += await choose(ans, shuffle(opt(['Nice to meet you, too!', 'Good night!', 'See you!'])), o => o.t === 'Nice to meet you, too!');
+    fsay(`Hi! I'm ${name}. What's your name?`, 'cheer');
+    wrong += await choose('💬 Answer', shuffle(opt([`I'm ${pet.name}.`, "I'm fine.", "I'm hungry."])), o => o.t === `I'm ${pet.name}.`, { cols: 1 });
+    fsay(`Nice to meet you, ${pet.name}!`, 'cheer');
+    wrong += await choose('💬 Answer', shuffle(opt(['Nice to meet you, too!', 'Good night!', 'See you!'])), o => o.t === 'Nice to meet you, too!', { cols: 1 });
   } else {
-    say2(`Hi, ${pet.name}! How are you?`);
-    wrong += await choose(ans, shuffle(opt(["I'm good!", `I'm ${age()} years old.`, "It's Monday."])), o => o.t === "I'm good!");
+    fsay(`Hi, ${pet.name}! How are you?`, 'cheer');
+    wrong += await choose('💬 Answer', shuffle(opt(["I'm good!", `I'm ${age()} years old.`, "It's Monday."])), o => o.t === "I'm good!", { cols: 1 });
   }
-  for (const q of friendQuestions(f)) {
-    say2(q.q);
+  for (const q of friendQuestions()) {
+    fsay(q.q);
     const right = rnd(q.a);
-    wrong += await choose(ans, shuffle(opt([right, ...q.x])), o => o.t === right);
-    say2(rnd(['Me too!', 'Cool!', 'Nice!', 'Really? Wow!']));
-    await sleep(900);
+    wrong += await choose('💬 Answer', shuffle(opt([right, ...q.x])), o => o.t === right, { cols: 1, onRight: () => setAnim('cheer', 900) });
+    fsay(rnd(['Me too!', 'Cool!', 'Nice!', 'Really? Wow!']), 'cheer'); burst('heart', 2);
+    await sleep(1000);
   }
   f.hearts = Math.min(5, f.hearts + 1);
-  let giftLine = '', stars = 3;
+  let giftLine = '';
   if (f.hearts === 5 && !f.bff) {
     f.bff = true; count('bff');
     const acc = ACCS.find(a => !shop.acc.includes(a.id) && a.price <= 60);
     if (acc) { shop.acc.push(acc.id); store(SHOP_KEY, shop); giftLine = `We're best friends! This ${acc.en.toLowerCase()} is for you!`; }
   }
-  say2(giftLine || 'This is for you!');
-  wrong += await choose(ans, shuffle(opt(['Thank you!', "You're welcome.", 'Good morning!'])), o => o.t === 'Thank you!');
-  say2('Bye! See you!');
-  wrong += await choose(ans, shuffle(opt(['See you!', 'Nice to meet you.', 'Happy birthday!'])), o => o.t === 'See you!');
-  body.querySelector('.them').classList.add('leave');
-  ans.innerHTML = `<div class="hearts">${'💗'.repeat(f.hearts)}${'🤍'.repeat(5 - f.hearts)}</div>`;
-  await sleep(1400);
+  fsay(giftLine || 'This is for you!', 'cheer');
+  wrong += await choose('💬 Answer', shuffle(opt(['Thank you!', "You're welcome.", 'Good morning!'])), o => o.t === 'Thank you!', { cols: 1 });
+  fsay('Bye! See you!');
+  wrong += await choose('💬 Answer', shuffle(opt(['See you!', 'Nice to meet you.', 'Happy birthday!'])), o => o.t === 'See you!', { cols: 1 });
+  panel(`💗 ${name}`, `<div class="hearts">${'💗'.repeat(f.hearts)}${'🤍'.repeat(5 - f.hearts)}</div>`);
+  burst('heart', 5); await sleep(1600);
   world.friends[name] = f; setCount('friends', Object.keys(world.friends).length);
-  return { good: wrong === 0, stars, diary: `My friend ${name} came to my house.` };
+  return { good: wrong === 0, stars: 3, diary: `My friend ${name} came to my house.` };
 }
 
 // ================================================================ LETTERS
-function makeLetter() {
-  const known = Object.keys(world.friends);
-  const from = known.length ? rnd(known) : rnd(FRIEND_NAMES);
-  const trip = rnd(byCat('trip')), food = rnd(byCat('food')), sport = rnd(byCat('play').filter(i => i.sport)), place = rnd(byCat('go'));
-  const kinds = [
-    () => ({ text: `I went to ${trip.en}. I ate ${food.a}. It was delicious!`, q: `Where did ${from} go?`, right: trip, pool: byCat('trip') }),
-    () => ({ text: `I went to ${trip.en}. I ate ${food.a}. It was delicious!`, q: `What did ${from} eat?`, right: food, pool: byCat('food') }),
-    () => ({ text: `I went to ${place.en} with my family. I played ${sport.en}. It was fun!`, q: `What did ${from} play?`, right: sport, pool: byCat('play').filter(i => i.sport) }),
-    () => ({ text: `I went to ${place.en} with my family. I played ${sport.en}. It was fun!`, q: `Where did ${from} go?`, right: place, pool: byCat('go') }),
-  ];
-  const k = rnd(kinds)();
-  return { from, ...k, choices: shuffle([k.right, ...pickN(k.pool.filter(i => i.id !== k.right.id), 2)]) };
-}
+const TOWN = [ // original building art
+  { id: 'park', en: 'the park', clue: 'the place with slides and swings' }, { id: 'school', en: 'school', clue: 'the place with teachers and students' },
+  { id: 'market', en: 'the market', clue: 'the place with fruit and vegetables' }, { id: 'hospital', en: 'the hospital', clue: 'the place with doctors and nurses' },
+  { id: 'restaurant', en: 'the restaurant', clue: 'the place with cooks and waiters' }, { id: 'arcade', en: 'the arcade', clue: 'the place with video games' },
+  { id: 'mall', en: 'the mall', clue: 'the place with many shops' },
+];
 async function readLetter() {
-  const L = makeLetter();
-  const body = actOpen('💌 You got a letter!', null);
-  body.innerHTML = `<div class="mail"><div class="letter"><p class="dear">Dear ${pet.name},</p><p>${L.text}</p><p class="from">From, ${L.from}</p></div><div class="lq"><div class="gline">${L.q}</div><div class="answers"></div></div></div>`;
-  sfx('pop_01.mp3', .5);
-  const wrong = await choose(body.querySelector('.answers'), L.choices.map(c => ({ html: itemHtml(c), id: c.id })), o => o.id === L.right.id);
-  world.letters.unshift({ d: dayKey(), from: L.from, text: L.text }); if (world.letters.length > 40) world.letters.pop();
-  count('letters');
-  await sleep(500);
-  return { good: wrong === 0, stars: 2, diary: `I got a letter from ${L.from}.` };
+  const known = Object.keys(world.friends), from = known.length ? rnd(known) : rnd(FRIEND_NAMES);
+  const place = rnd(TOWN.filter(p => p.id !== 'hospital')), foodId = rnd(Object.keys(FOOD_SPR).filter(k => ITEM[k])), food = ITEM[foodId];
+  const text = `I went to ${place.en} with my family. I ate ${food.a}. It was ${rnd(['delicious', 'fun', 'great'])}!`;
+  view.x = view.tx = 48;
+  scene(shop.room || 'home_03', { draw(c, t) { drawMe(c, t, meCell(t)); drawPic(c, 'misc/gift', view.x + 8, FEET - 30); } });
+  setAnim('cheer', 1200); sfx('pop_01.mp3', .5);
+  showBubble('', {}); $('bubbleBtns').classList.add('hidden');
+  $('bubbleWho').textContent = '💌 A letter'; $('bubbleWho').classList.remove('hidden');
+  $('bubbleText').innerHTML = `<div class="letterTxt"><span class="dear">Dear ${pet.name},</span><br>${text}<br><span class="from">From, ${from}</span></div>`;
+  let wrong;
+  if (Math.random() < .5) wrong = await choose(`❓ Where did ${from} go?`, shuffle([place, ...pickN(TOWN.filter(p => p.id !== place.id), 2)]).map(p => ({ label: p.en, icon: picIcon('misc/building_' + p.id, 76), id: p.id })), o => o.id === place.id, { cols: 3 });
+  else wrong = await choose(`❓ What did ${from} eat?`, shuffle([foodId, ...pickN(Object.keys(FOOD_SPR).filter(k => k !== foodId && ITEM[k]), 2)]).map(k => ({ label: ITEM[k].en, icon: icon('food', FOOD_SPR[k], 64), id: k })), o => o.id === foodId, { cols: 3 });
+  world.letters.unshift({ d: dayKey(), from, text }); if (world.letters.length > 40) world.letters.pop();
+  count('letters'); setAnim('cheer', 1000); await sleep(700);
+  return { good: wrong === 0, stars: 2, diary: `I got a letter from ${from}.` };
 }
 
-// ================================================================ GARDEN (grows over real days, never dies)
-const SEEDS = ['tomato', 'carrot', 'corn', 'strawberry', 'melon'];
+// ================================================================ GARDEN (original garden art; grows over real days, never dies)
+const PATCH_X = [36, 60, 84], PATCH_Y = 58;
 function gardenMode() {
   const g = world.garden, d = dayKey();
-  if (g.some(p => p && p.stage >= 3)) return 'harvest';
-  if (g.some(p => p && p.stage < 3 && p.watered !== d)) return 'water';
+  if (g.some(p => p && p.stage >= 2)) return 'harvest';
+  if (g.some(p => p && p.stage < 2 && p.watered !== d)) return 'water';
   if (g.some(p => !p)) return 'plant';
   return null;
 }
 async function garden() {
   const mode = gardenMode(), g = world.garden, d = dayKey();
-  const body = actOpen('🌱 The garden', 'park2');
-  body.innerHTML = `<div class="gline gtop"></div><div class="plots"></div><div class="answers"></div>`;
-  const line = body.querySelector('.gtop'), plots = body.querySelector('.plots');
-  const plantE = p => !p ? '' : p.stage >= 3 ? ITEM[p.id].e : ['🌱', '🌿', '🪴'][p.stage];
-  const draw = () => {
-    plots.innerHTML = '';
-    g.forEach((p, i) => plots.appendChild(h(`<button class="plot" data-i="${i}"><span class="sign">${p ? ITEM[p.id].e + '<b>' + ITEM[p.id].pl + '</b>' : ''}</span><span class="plant">${plantE(p)}</span></button>`)));
-  };
-  draw();
-  let wrong = 0, diary = '', good = true;
-  if (mode === 'plant') {
-    const seed = ITEM[rnd(SEEDS.filter(s => !g.some(p => p && p.id === s)))];
-    line.textContent = `Let's plant ${seed.pl}!`;
-    wrong = await choose(body.querySelector('.answers'), shuffle([seed, ...pickN(SEEDS.filter(s => s !== seed.id).map(s => ITEM[s]), 2)]).map(c => ({ html: `<span class="ce">${c.e}</span><span class="cl">${c.pl} seeds</span>`, id: c.id })), o => o.id === seed.id);
-    const i = g.findIndex(p => !p); g[i] = { id: seed.id, stage: 0, watered: d };
-    draw(); sfx('jump.ogg', .4); line.textContent = `We planted ${seed.pl}! Let's water them every day.`;
-    diary = `I planted ${seed.pl}.`;
-  } else {
-    const targets = g.map((p, i) => [p, i]).filter(([p]) => p && (mode === 'harvest' ? p.stage >= 3 : p.stage < 3 && p.watered !== d));
-    const [p, idx] = rnd(targets);
-    line.textContent = mode === 'harvest' ? `The ${ITEM[p.id].pl} are ready! Let's pick them!` : `Water the ${ITEM[p.id].pl}, please.`;
-    body.querySelector('.answers').innerHTML = `<div class="ghelp">👆 Tap the right plant</div>`;
-    wrong = await new Promise(res => {
-      let w = 0;
-      plots.querySelectorAll('.plot').forEach(b => b.onclick = () => {
-        if (+b.dataset.i === idx) res(w);
-        else if (g[+b.dataset.i]) { w++; b.classList.add('shake'); sfx('refuse.ogg', .3); setTimeout(() => b.classList.remove('shake'), 400); }
-      });
+  let canAt = -1, wet = -1;
+  view.x = view.tx = 12;
+  scene('garden', { draw(c, t) {
+    stepMe(); drawMe(c, t, meCell(t), Math.abs(view.tx - view.x) > .4 && view.flip);
+    g.forEach((p, i) => {
+      drawPic(c, i === wet || (p && p.watered === d) ? 'misc/garden_patch_01_wet' : 'misc/garden_patch_01', PATCH_X[i] - 12, PATCH_Y);
+      if (p) { const crop = CROPS.find(x => x.id === p.id); drawSheet(c, 'plant', crop.spr + Math.min(2, p.stage), PATCH_X[i] - 12, PATCH_Y - 14);
+        drawSheet(c, 'plant', crop.spr + 2, PATCH_X[i] - 6, PATCH_Y + 23, 12); } // little picture sign
     });
-    const b = plots.querySelector(`[data-i="${idx}"]`);
+    if (canAt >= 0) drawPic(c, 'misc/watering_can_01', PATCH_X[canAt] - 4, PATCH_Y - 34 + Math.sin(t / 120) * 2);
+  } , tap: null });
+  view.hidden = false;
+  let wrong = 0, diary = '';
+  if (mode === 'plant') {
+    const crop = rnd(CROPS.filter(c => !g.some(p => p && p.id === c.id)));
+    talk(`Let's plant ${crop.pl}!`);
+    wrong = await choose('🌱 Which seeds?', shuffle([crop, ...pickN(CROPS.filter(c => c.id !== crop.id), 2)]).map(c => ({ label: `${c.pl}`, icon: icon('plant', c.spr + 2, 64), id: c.id })), o => o.id === crop.id, { cols: 3 });
+    const i = g.findIndex(p => !p); g[i] = { id: crop.id, stage: 0, watered: d };
+    sfx('jump.ogg', .4); talk(`We planted ${crop.pl}! Let's water them every day.`); diary = `I planted ${crop.pl}.`;
+  } else {
+    const targets = g.map((p, i) => [p, i]).filter(([p]) => p && (mode === 'harvest' ? p.stage >= 2 : p.stage < 2 && p.watered !== d));
+    const [p, idx] = rnd(targets), crop = CROPS.find(x => x.id === p.id);
+    talk(mode === 'harvest' ? `The ${crop.pl} are ready! Let's pick them!` : `Water the ${crop.pl}, please.`);
+    panel('🌱 The garden', '<div class="ahelp">👆 Tap the right plant on the screen</div>');
+    wrong = await new Promise(res => { let w = 0; actScene.tap = x => {
+      const i = PATCH_X.findIndex(px => Math.abs(px - x) < 12);
+      if (i < 0 || !g[i]) return;
+      if (i === idx) { actScene.tap = null; res(w); } else { w++; sfx('refuse.ogg', .3); setAnim('refuse', 700); }
+    }; });
+    view.tx = PATCH_X[idx] - 16;
     if (mode === 'harvest') {
-      b.classList.add('pick'); sfx('cheer_success.ogg', .5); await sleep(900);
-      g[idx] = null; count('harvests'); draw();
-      line.textContent = `Yummy ${ITEM[p.id].pl}!`; diary = `I picked ${ITEM[p.id].pl}.`;
+      g[idx] = null; sfx('cheer_success.ogg', .5); setAnim('cheer', 1500); burst('star', 3); count('harvests');
+      talk(`Yummy ${crop.pl}!`); diary = `I picked ${crop.pl}.`;
     } else {
-      b.insertAdjacentHTML('beforeend', '<span class="drops">💧💧💧</span>'); sfx('pop_01.mp3', .5); await sleep(1000);
-      p.stage++; p.watered = d; draw();
-      line.textContent = p.stage >= 3 ? `Wow! The ${ITEM[p.id].pl} are ready!` : `They're growing!`;
-      diary = `I watered the ${ITEM[p.id].pl}.`;
+      canAt = idx; sfx('pop_01.mp3', .5); await sleep(1100); canAt = -1; wet = idx;
+      p.stage++; p.watered = d; setAnim('cheer', 1000);
+      talk(p.stage >= 2 ? `Wow! The ${crop.pl} are ready! Let's pick them next time.` : "They're growing!");
+      diary = `I watered the ${crop.pl}.`;
     }
   }
-  saveWorld(); await sleep(1500);
-  return { good: wrong === 0 && good, stars: mode === 'harvest' ? 4 : 2, diary };
+  saveWorld(); panel('🌱 The garden', ''); await sleep(1800);
+  return { good: wrong === 0, stars: mode === 'harvest' ? 4 : 2, diary };
 }
 
-// ================================================================ TOYS (prepositions: on / in / under / by)
-const TOYS = [
-  { id: 'bear', e: '🧸', en: 'teddy bear' }, { id: 'robot', e: '🤖', en: 'robot' }, { id: 'doll', e: '🪆', en: 'doll' },
-  { id: 'car', e: '🚗', en: 'toy car' }, { id: 'kite', e: '🪁', en: 'kite' }, { id: 'yoyo', e: '🪀', en: 'yo-yo' },
-  { id: 'duck', e: '🦆', en: 'rubber duck' }, { id: 'ball', e: '🎾', en: 'ball' }, { id: 'train', e: '🚂', en: 'toy train' },
-];
-const SPOTS = [
-  { id: 'onbed', en: 'on the bed', x: 13, y: 52 }, { id: 'bybed', en: 'by the bed', x: 27, y: 80 },
-  { id: 'ondesk', en: 'on the desk', x: 46, y: 26 }, { id: 'underdesk', en: 'under the desk', x: 46, y: 70 },
-  { id: 'onchair', en: 'on the chair', x: 70, y: 50 }, { id: 'bychair', en: 'by the chair', x: 79, y: 82 },
-  { id: 'inbox', en: 'in the box', x: 89, y: 68 }, { id: 'onbox', en: 'on the box', x: 89, y: 30 },
+// ================================================================ TOYS (put it on / under / by / in …) – original furniture art
+const FURN = [
+  { id: 'table', pic: 'misc/table_01', en: 'table', spots: [['on', 0.5, -4], ['under', 0.5, 0.75]] },
+  { id: 'chair', pic: 'furn/chair_orange', en: 'chair', spots: [['on', 0.5, 0.25], ['by', 1.25, 0.6]] },
+  { id: 'tv', pic: 'furn/tv_01', en: 'TV', spots: [['on', 0.5, -4], ['by', 1.25, 0.6]] },
+  { id: 'cabinet', pic: 'furn/cabinet_01', en: 'drawers', spots: [['on', 0.5, -4], ['by', 1.25, 0.6]] },
+  { id: 'bookcase', pic: 'furn/bookcase_wooden', en: 'bookcase', spots: [['on', 0.5, -4], ['in', 0.5, 0.3], ['by', 1.2, 0.75]] },
 ];
 async function toyTime() {
   const toy = TOYS.find(t => !world.toys.includes(t.id)) || rnd(TOYS);
-  const spot = rnd(SPOTS);
-  const body = actOpen(`🎁 A new ${toy.en}!`, null);
-  body.innerHTML = `<div class="gline">I got a new ${toy.en}! Put it ${spot.en}, please.</div>
-    <div class="toyroom"><span class="f bed">🛏️</span><div class="f desk"><i></i><i></i><i></i></div><span class="f chair">🪑</span><span class="f box">📦</span>
-    <span class="holding">${toy.e}</span></div><div class="ghelp">👆 Tap the right place</div>`;
-  const room = body.querySelector('.toyroom');
-  SPOTS.forEach(s => room.appendChild(h(`<button class="spot" data-s="${s.id}" style="left:${s.x}%;top:${s.y}%"></button>`)));
+  const F = rnd(FURN), [fw, fh] = picSize(F.pic);
+  const piece = { f: F, w: fw || 32, h: fh || 30 }; piece.x = Math.round(44 - piece.w / 2); piece.y = FEET - piece.h;
+  const spots = F.spots.map(([prep, fx, fy]) => ({ en: `${prep} the ${F.en}`, x: piece.x + piece.w * fx, y: fy < 0 ? piece.y + fy : piece.y + piece.h * fy }));
+  if (!spots.some(s => s.en.startsWith('by'))) spots.push({ en: `by the ${F.en}`, x: piece.x - 9, y: FEET - 8 });
+  else spots.forEach(s => { if (s.en.startsWith('by')) { s.x = piece.x - 9; s.y = FEET - 8; } });
+  const target = rnd(spots);
+  let placed = null;
+  view.x = view.tx = 84;
+  scene(shop.room || 'home_03', { draw(c, t) {
+    drawPic(c, F.pic, piece.x, piece.y);
+    if (!placed) spots.forEach(s => {
+      c.globalAlpha = .55; c.fillStyle = '#fff'; c.beginPath(); c.arc(s.x, s.y, 6, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;
+      c.strokeStyle = '#ff7a1a'; c.lineWidth = 1; c.setLineDash([2, 1.5]); c.lineDashOffset = -t / 120; c.beginPath(); c.arc(s.x, s.y, 6, 0, Math.PI * 2); c.stroke(); c.setLineDash([]);
+    });
+    drawMe(c, t, meCell(t));
+    if (placed) drawSheet(c, 'item', toy.spr, placed.x - 7, placed.y - 7, 14);
+    else drawSheet(c, 'item', toy.spr, view.x - 7, petRect().y - 16 + Math.sin(t / 200) * 1.5, 14);
+  } });
+  talk(`I got a new ${toy.en}! Put it ${target.en}, please.`);
+  const box = panel('🧸 A new toy!');
+  box.appendChild(icon('item', toy.spr, 80)); box.appendChild(h(`<div class="aword">${toy.en}</div>`)); box.appendChild(h('<div class="ahelp">👆 Tap the right place on the screen</div>'));
   let wrong = 0;
-  await new Promise(res => room.querySelectorAll('.spot').forEach(b => b.onclick = () => {
-    if (b.dataset.s === spot.id) { b.classList.add('placed'); b.textContent = toy.e; room.querySelector('.holding').remove(); sfx('cheer.ogg', .5); res(); }
-    else { wrong++; b.classList.add('shake'); sfx('refuse.ogg', .3); setTimeout(() => b.classList.remove('shake'), 400); }
-  }));
-  body.querySelector('.gline').textContent = `The ${toy.en} is ${spot.en}. Thank you!`;
+  await new Promise(res => { actScene.tap = (x, y) => {
+    const s = spots.reduce((b, s) => Math.hypot(s.x - x, s.y - y) < Math.hypot(b.x - x, b.y - y) ? s : b, spots[0]);
+    if (Math.hypot(s.x - x, s.y - y) > 12) return;
+    if (s === target) { placed = s; actScene.tap = null; sfx('cheer.ogg', .5); setAnim('cheer', 1500); burst('heart', 3); res(); }
+    else { wrong++; sfx('refuse.ogg', .3); setAnim('refuse', 700); talk(`No, that's ${s.en}. Put it ${target.en}, please.`); }
+  }; });
+  talk(`The ${toy.en} is ${target.en}. Thank you!`);
   if (!world.toys.includes(toy.id)) { world.toys.push(toy.id); count('toys'); }
-  saveWorld(); await sleep(1600);
+  saveWorld(); await sleep(1800);
   return { good: wrong === 0, stars: 2, diary: `I got a ${toy.en}.` };
 }
 
 // ================================================================ JOBS (adult and senior)
-const MENU = [
-  { id: 'hamburger', p: 300 }, { id: 'hotdog', p: 250 }, { id: 'fries', p: 200 },
-  { id: 'icecream', p: 200 }, { id: 'juice', p: 150 }, { id: 'salad', p: 150 },
-];
+const MENU = [{ id: 'hamburger', p: 300 }, { id: 'pizza', p: 400 }, { id: 'riceball', p: 150 }, { id: 'icecream', p: 200 }, { id: 'juice', p: 150 }, { id: 'milk', p: 100 }];
 async function jobShop() {
-  const body = actOpen('💼 Job: food stand', 'market');
-  body.innerHTML = `<div class="duo"><div class="side them"></div><div class="talk"><div class="fbub"></div><div class="menu"></div><div class="answers"></div></div><div class="side me"></div></div>`;
-  body.querySelector('.me').appendChild(myPet(2.8, 1));
-  const bub = body.querySelector('.fbub'), menu = body.querySelector('.menu'), ans = body.querySelector('.answers');
+  let cust = null, cx = 110;
+  view.x = view.tx = 30;
+  scene('stand', { draw(c, t) {
+    drawMe(c, t, meCell(t));
+    drawPic(c, 'misc/stand_01_booth', 0, 0);
+    if (cust) { if (cx > 72) cx -= .6; drawChar(c, cust, cx, FEET + 2, cx > 72 ? animCell('walk', t) : 1, false); }
+  } });
   let wrong = 0;
-  for (let c = 0; c < 2; c++) {
-    const them = body.querySelector('.them'); them.innerHTML = ''; them.appendChild(spriteEl(rnd([...CHARS.child, ...CHARS.teen, ...CHARS.adult]), 2.8, 1, false));
-    const order = pickN(MENU, 1 + (Math.random() < 0.7 ? 1 : 0));
-    const words = order.map(o => ITEM[o.id].a);
-    bub.textContent = `${words.join(' and ').replace(/^./, s => s.toUpperCase())}, please.`;
+  for (let k = 0; k < 2; k++) {
+    cust = rnd([...CHARS.child, ...CHARS.teen, ...CHARS.adult]); cx = 110; await sleep(1100);
+    const order = pickN(MENU, Math.random() < .7 ? 2 : 1), words = order.map(o => ITEM[o.id].a), line = `${words.join(' and ').replace(/^./, s => s.toUpperCase())}, please.`;
+    talk(line, 'Customer');
     const picked = new Set();
-    menu.innerHTML = ''; ans.innerHTML = '';
+    const box = panel('💼 Food stand');
+    const grid = h('<div class="agrid" style="grid-template-columns:repeat(3,1fr)"></div>'); box.appendChild(grid);
     MENU.forEach(m => {
-      const b = h(`<button class="choice mi"><span class="ce">${ITEM[m.id].e}</span><span class="cl">${ITEM[m.id].en}</span><span class="yen">${m.p} yen</span></button>`);
+      const b = h('<button class="abtn"></button>'); b.appendChild(icon('food', FOOD_SPR[m.id], 52));
+      b.appendChild(h(`<span class="al">${ITEM[m.id].en}</span>`)); b.appendChild(h(`<span class="yen">${m.p} yen</span>`));
       b.onclick = () => { picked.has(m.id) ? picked.delete(m.id) : picked.add(m.id); b.classList.toggle('sel'); sfx('ui_click_01.ogg', .3); };
-      menu.appendChild(b);
+      grid.appendChild(b);
     });
-    const give = h(`<button class="big">Here you are!</button>`); ans.appendChild(give);
+    const give = h('<button class="big">Here you are!</button>'); box.appendChild(give);
     while (true) {
       await wait(give);
       if (picked.size === order.length && order.every(o => picked.has(o.id))) break;
-      wrong++; sfx('refuse.ogg', .3); bub.textContent = `No, no. ${words.join(' and ').replace(/^./, s => s.toUpperCase())}, please.`;
+      wrong++; sfx('refuse.ogg', .3); talk(`No, no. ${line}`, 'Customer');
     }
-    menu.innerHTML = '';
     const total = order.reduce((t, o) => t + o.p, 0);
-    bub.textContent = 'Thank you! How much is it?';
-    wrong += await choose(ans, shuffle([total, total + 100, Math.max(100, total - 50)]).map(v => ({ html: `It's ${v} yen.`, v })), o => o.v === total);
-    bub.textContent = 'Here you are. Thank you!'; sfx('task_complete.ogg', .5); await sleep(1200);
+    talk('Thank you! How much is it?', 'Customer');
+    wrong += await choose('💴 How much?', shuffle([total, total + 100, Math.max(100, total - 50)]).map(v => ({ label: `It's ${v} yen.`, v })), o => o.v === total, { cols: 1 });
+    talk('Here you are. Thank you!', 'Customer'); setAnim('cheer', 1000); sfx('task_complete.ogg', .5); await sleep(1300);
+    cust = null;
   }
   count('jobs');
   return { good: wrong === 0, stars: 6, diary: 'I worked at a food stand.' };
 }
-const DELIVER = [
-  { to: 'zoo', clue: 'the place with lions and elephants' }, { to: 'library', clue: 'the place with many books' },
-  { to: 'aquarium', clue: 'the place with fish and dolphins' }, { to: 'bakery', clue: 'the shop with bread' },
-  { to: 'flowershop', clue: 'the shop with flowers' }, { to: 'station', clue: 'the place with trains' },
-  { to: 'museum', clue: 'the place with dinosaurs' }, { to: 'school', clue: 'the place with teachers and students' },
-  { to: 'supermarket', clue: 'the shop with vegetables and meat' }, { to: 'park', clue: 'the place with slides and swings' },
-];
 async function jobMail() {
-  const body = actOpen('💼 Job: mail carrier', 'postoffice');
-  body.innerHTML = `<div class="duo"><div class="side me"></div><div class="talk"><div class="fbub"></div><div class="answers"></div></div><div class="side"><div class="parcel">📨</div></div></div>`;
-  body.querySelector('.me').appendChild(myPet(2.8, 1));
-  const bub = body.querySelector('.fbub'), ans = body.querySelector('.answers');
+  view.x = view.tx = 48;
+  scene('postoffice', { draw(c, t) { stepMe(); drawMe(c, t, meCell(t)); drawPic(c, 'misc/gift', view.x + 10, FEET - 22); } });
   let wrong = 0;
-  for (const d of pickN(DELIVER, 3)) {
-    bub.textContent = `This letter is for ${d.clue}.`;
-    const choices = shuffle([d.to, ...pickN(DELIVER.filter(x => x.to !== d.to).map(x => x.to), 2)]).map(id => ({ html: itemHtml(ITEM[id]), id }));
-    wrong += await choose(ans, choices, o => o.id === d.to);
-    bub.textContent = `Delivered to ${ITEM[d.to].en}!`; await sleep(900);
+  for (const d of pickN(TOWN, 3)) {
+    talk(`This letter is for ${d.clue}.`, 'Post office');
+    wrong += await choose('📮 Where does it go?', shuffle([d, ...pickN(TOWN.filter(x => x.id !== d.id), 2)]).map(p => ({ label: p.en, icon: picIcon('misc/building_' + p.id, 76), id: p.id })), o => o.id === d.id, { cols: 3 });
+    talk(`Delivered to ${d.en}!`); setAnim('cheer', 900); await sleep(1000);
   }
   count('jobs');
   return { good: wrong === 0, stars: 6, diary: 'I worked as a mail carrier.' };
@@ -566,22 +623,21 @@ async function jobMail() {
 // ================================================================ HOLIDAYS
 async function holiday() {
   const ev = eventToday();
-  const body = actOpen(`${ev.decor} ${ev.hi}`, shop.room || 'home_03');
-  const reply = ev.reply || ev.hi;
-  const others = EVENTS.filter(e => e.id !== ev.id).map(e => e.reply || e.hi);
-  body.innerHTML = `<div class="duo"><div class="side me"></div><div class="talk"><div class="fbub">${ev.hi}</div><div class="answers"></div></div><div class="side"><div class="parcel">${ev.decor}</div></div></div>`;
-  body.querySelector('.me').appendChild(myPet(3.2, 2));
-  const wrong = await choose(body.querySelector('.answers'), shuffle([reply, ...pickN(others, 2)]).map(t => ({ html: t, t })), o => o.t === reply);
-  const bub = body.querySelector('.fbub');
+  view.x = view.tx = 36;
+  scene(shop.room || 'home_03', { draw(c, t) { drawDecor(c, t); drawMe(c, t, meCell(t)); } });
+  if (!ev.art) $('emojiLayer').innerHTML = `<span class="decor ev">${ev.decor}</span>`;
+  setAnim('cheer', 1500); talk(ev.hi);
+  const reply = ev.reply || ev.hi, others = EVENTS.filter(e => e.id !== ev.id).map(e => e.reply || e.hi);
+  const wrong = await choose('💬 Answer', shuffle([reply, ...pickN(others, 2)]).map(t => ({ label: t, t })), o => o.t === reply, { cols: 1 });
   const key = ev.id + new Date().getFullYear();
   let stars = 3;
   if (!world.events[key]) {
     world.events[key] = true;
     if (ev.gift.acc && !shop.acc.includes(ev.gift.acc)) { shop.acc.push(ev.gift.acc); shop.wearing = ev.gift.acc; store(SHOP_KEY, shop); }
     else stars += ev.gift.stars || 5;
-    bub.textContent = ev.gift.line; confetti(); count('events');
-  } else bub.textContent = 'Yay!';
-  saveWorld(); sfx('cheer_success.ogg', .5); await sleep(2000);
+    talk(ev.gift.line); confetti(); count('events');
+  } else talk('Yay!');
+  saveWorld(); setAnim('cheer', 2000); sfx('cheer_success.ogg', .5); await sleep(2200);
   return { good: wrong === 0, stars, diary: `${ev.hi.replace(/!$/, '')}! It was a fun day.` };
 }
 
@@ -589,7 +645,7 @@ async function holiday() {
 const ACTIVITIES = [
   { id: 'game', min: 2, cap: 2, w: 3, intro: () => rnd(["Let's play a game!", 'I want to play a game with you!']), run: () => rnd([gameCatch, gameNumber, gameSimon, gameSpell])() },
   { id: 'friend', min: 2, cap: 1, w: 2, intro: () => 'Knock, knock! Someone is at the door!', run: visitFriend },
-  { id: 'mail', min: 2, cap: 1, w: 2, intro: () => 'I got a letter! Let\'s read it!', run: readLetter },
+  { id: 'mail', min: 2, cap: 1, w: 2, intro: () => "I got a letter! Let's read it!", run: readLetter },
   { id: 'garden', min: 2, cap: 1, w: 2, ok: () => !!gardenMode(), intro: () => "Let's go to the garden!", run: garden },
   { id: 'toy', min: 2, cap: 1, w: 1.2, intro: () => 'I got a present! A new toy!', run: toyTime },
   { id: 'job', min: 4, cap: 1, w: 2, intro: () => "It's time for work!", run: () => rnd([jobShop, jobMail])() },

@@ -116,7 +116,9 @@ function currentFrame(t) {
 
 function render(t) {
   ctx.clearRect(0, 0, 96, 96); fx.clearRect(0, 0, 96, 96);
-  if (pet && !view.hidden) {
+  if (window.actScene) { try { actScene.draw(ctx, t); } catch (e) { console.error(e); } }
+  else if (pet && !view.hidden) {
+    if (!place && typeof drawDecor === 'function') drawDecor(ctx, t);
     // poop
     if (pet.poop && !place) {
       const p = img('assets/misc/poop.png'); if (p.complete) ctx.drawImage(p, 70, FEET - 14 + (Math.floor(t / 400) % 2));
@@ -467,7 +469,7 @@ async function startActivity() {
   markToday(a.id);
   let r;
   try { r = await a.run(); } catch (e) { console.error(e); r = { good: true, stars: 1 }; }
-  actClose();
+  endScene(); view.x = view.tx = 48; view.anim = null; view.flip = false; view.jump = 0;
   await completeWish({ firstTry: r.good, stars: r.stars, diary: r.diary, activity: true });
   finishBusy();
 }
@@ -619,10 +621,12 @@ $('hintBtn').onclick = () => {
 };
 
 // tap the pet = hug (or egg tap)
+function screenXY(e) { const s = $('screen').getBoundingClientRect(); return [(e.clientX - s.left) / s.width * 96, (e.clientY - s.top) / s.height * 96]; }
+$('screen').addEventListener('pointermove', e => { if (window.actScene && actScene.move) actScene.move(...screenXY(e)); });
 $('screen').addEventListener('pointerdown', e => {
+  if (window.actScene) { const [x, y] = screenXY(e); actScene.move && actScene.move(x, y); actScene.tap && actScene.tap(x, y); return; }
   if (!pet || busy) return;
-  const s = $('screen').getBoundingClientRect();
-  const x = (e.clientX - s.left) / s.width * 96, y = (e.clientY - s.top) / s.height * 96;
+  const [x, y] = screenXY(e);
   const r = petRect();
   if (x < r.x - 4 || x > r.x + r.w + 4 || y < r.y - 4 || y > r.y + r.h + 4) return;
   if (pet.stage === 0) tapEgg(); else give(ITEM.hug, null);
