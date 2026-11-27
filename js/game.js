@@ -748,7 +748,7 @@ function applyShell() { $('app').style.setProperty('--shell-img', `url(assets/ui
 $('shopBtn').onclick = () => { renderShop(); openModal('shop'); };
 
 // ---------------------------------------------------------------- diary book (diary / letters / badges)
-let diaryTab = 'diary';
+let diaryTab = 'goals';
 document.querySelectorAll('#diaryTabs button').forEach(b => b.onclick = () => { diaryTab = b.dataset.tab; renderDiary(); });
 function niceDate(d) { const [y, m, dd] = d.split('-').map(Number); return `${MONTHS[m - 1]} ${dd}`; }
 function renderDiary() {

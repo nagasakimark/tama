@@ -68,7 +68,7 @@ const NEEDS = [
   [5, 5, 2.5, s => { const [a, b] = two('food'); return { key: 'past:' + b.id, en: `I ate ${a.a} yesterday. Today I want ${b.a}.`, ja: `きのう ${a.ja}を たべた。きょうは ${b.ja}が ほしい。`, ok: [b.id], avoid: { [a.id]: 'I ate it yesterday!' } }; }],
   [5, 5, 2.5, s => { const [a, b] = two('go'); return { key: 'pastgo:' + b.id, en: `I went to ${a.en} yesterday. Today I want to go to ${b.en}.`, ja: `きのう ${a.ja}に いった。きょうは ${b.ja}に いきたい。`, ok: [b.id], avoid: { [a.id]: 'I went there yesterday!' } }; }],
   [5, 5, 2, s => { const p = rnd(byCat('play').filter(i => i.sport)); return { key: 'pastplay:' + p.id, en: `I played ${p.en} yesterday. It was fun! Let's play again!`, ja: `きのう ${p.ja}を した。たのしかった！ また しよう！`, ok: [p.id] }; }],
-  [5, 5, 1.5, s => { const t = rnd(byCat('trip')); return { key: 'pasttrip:' + t.id, en: `I went to ${t.en} when I was young. I want to go again!`, ja: `わかいころ ${t.ja}に いった。また いきたい！`, ok: [t.id] }; }],
+  [5, 5, 1.5, s => { const t = rnd(byCat('trip')); return { key: 'pasttrip:' + t.id, en: `I went to ${t.en} last year. I want to go again!`, ja: `わかいころ ${t.ja}に いった。また いきたい！`, ok: [t.id] }; }],
   [5, 5, 1.5, s => ({ key: 'old', en: "I'm old. I'm tired.", ja: 'としを とって つかれた…。', ok: ['bed'] })],
 ];
 

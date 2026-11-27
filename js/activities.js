@@ -128,13 +128,13 @@ const FOOD_SPR = { bread: 542, pizza: 515, hamburger: 2, sushi: 605, spaghetti: 
   icecream: 1024, cake: 998, donut: 954, juice: 905, milk: 1036, banana: 960, curry: 536, takoyaki: 1068, pancakes: 806 };
 const TOYS = [
   { id: 'bear', spr: 10, en: 'teddy bear' }, { id: 'ball', spr: 4, en: 'ball' }, { id: 'robot', spr: 15, en: 'robot' },
-  { id: 'skate', spr: 11, en: 'skateboard' }, { id: 'game', spr: 14, en: 'video game' }, { id: 'cube', spr: 12, en: 'puzzle cube' },
-  { id: 'music', spr: 3, en: 'music player' }, { id: 'fox', spr: 1, en: 'toy fox' },
+  { id: 'skate', spr: 11, en: 'skateboard' }, { id: 'game', spr: 14, en: 'video game' }, { id: 'cube', spr: 12, en: 'cube' },
+  { id: 'music', spr: 3, en: 'radio' }, { id: 'fox', spr: 1, en: 'toy fox' },
 ];
 const CROPS = [ // first plant cell; +1 growing, +2 ready
-  { id: 'tomato', spr: 33, pl: 'tomatoes' }, { id: 'carrot', spr: 41, pl: 'carrots' }, { id: 'potato', spr: 45, pl: 'potatoes' },
-  { id: 'sweetpotato', spr: 49, pl: 'sweet potatoes' }, { id: 'watermelon', spr: 53, pl: 'watermelons' }, { id: 'peach', spr: 57, pl: 'peaches' },
-  { id: 'cabbage', spr: 29, pl: 'cabbages' },
+  { id: 'tomato', one: 'tomato', spr: 33, pl: 'tomatoes' }, { id: 'carrot', one: 'carrot', spr: 41, pl: 'carrots' }, { id: 'potato', one: 'potato', spr: 45, pl: 'potatoes' },
+  { id: 'sweetpotato', one: 'sweet potato', spr: 49, pl: 'sweet potatoes' }, { id: 'watermelon', one: 'watermelon', spr: 53, pl: 'watermelons' }, { id: 'peach', one: 'peach', spr: 57, pl: 'peaches' },
+  { id: 'cabbage', one: 'cabbage', spr: 29, pl: 'cabbages' },
 ];
 function drawSheet(c, sheet, n, x, y, size) {
   const [src, cs, cols] = SHEETS[sheet], im = img(src);
@@ -529,8 +529,7 @@ const FURN = [
   { id: 'table', pic: 'misc/table_01', en: 'table', spots: [['on', 0.5, -4], ['under', 0.5, 0.75]] },
   { id: 'chair', pic: 'furn/chair_orange', en: 'chair', spots: [['on', 0.5, 0.25], ['by', 1.25, 0.6]] },
   { id: 'tv', pic: 'furn/tv_01', en: 'TV', spots: [['on', 0.5, -4], ['by', 1.25, 0.6]] },
-  { id: 'cabinet', pic: 'furn/cabinet_01', en: 'drawers', spots: [['on', 0.5, -4], ['by', 1.25, 0.6]] },
-  { id: 'bookcase', pic: 'furn/bookcase_wooden', en: 'bookcase', spots: [['on', 0.5, -4], ['in', 0.5, 0.3], ['by', 1.2, 0.75]] },
+  { id: 'bed', pic: 'furn/race_car_minibed', en: 'bed', spots: [['on', 0.5, 0.2], ['by', 1.2, 0.6]] },
 ];
 async function toyTime() {
   const toy = TOYS.find(t => !world.toys.includes(t.id)) || rnd(TOYS);
@@ -622,9 +621,9 @@ async function jobMail() {
   scene('postoffice', { draw(c, t) { stepMe(); drawMe(c, t, meCell(t)); drawPic(c, 'misc/gift', view.x + 10, FEET - 22); } });
   let wrong = 0;
   for (const d of pickN(TOWN, 3)) {
-    talk(`This letter is for ${d.clue}.`, 'Post office');
+    talk(`Please take this letter to ${d.en}.`, 'Post office');
     wrong += await choose('📮 Where does it go?', shuffle([d, ...pickN(TOWN.filter(x => x.id !== d.id), 2)]).map(p => ({ label: p.en, icon: picIcon('misc/building_' + p.id, 76), id: p.id })), o => o.id === d.id, { cols: 3 });
-    talk(`Delivered to ${d.en}!`); setAnim('cheer', 900); await sleep(1000);
+    talk('Thank you!'); setAnim('cheer', 900); await sleep(1000);
   }
   count('jobs');
   return { good: wrong === 0, stars: 6, diary: 'I worked as a mail carrier.' };
