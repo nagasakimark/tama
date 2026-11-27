@@ -20,6 +20,7 @@
     <div class="spacer"></div>
     <button id="viewBtn" class="round wide" title="Tamagotchi view"><span id="viewIc">🥚</span> <span id="viewLb">Tama view</span></button>
     <button id="shopBtn" class="round" title="Shop">🛍️</button>
+    <button id="diaryBtn" class="round" title="Diary">📔</button>
     <button id="albumBtn" class="round" title="Album">📖</button>
     <button id="soundBtn" class="round" title="Sound effects on/off">🔔</button>
   </header>
@@ -28,7 +29,7 @@
     <section id="talkCol">
       <div id="bubble" class="hidden">
         <div id="bubbleText"></div>
-                <div id="bubbleBtns"><button id="hintBtn" class="mini" title="Hint">💡 Hint</button></div>
+                <div id="bubbleBtns"><button id="hintBtn" class="mini" title="Hint">💡 Hint</button><button id="goBtn" class="big hidden">OK! ▶</button></div>
       </div>
     </section>
 
@@ -74,6 +75,7 @@
       <div id="byeStats"></div>
       <button id="newEggBtn" class="big">New egg 🥚</button>
     </div>
+    <div id="act" class="hidden"><div id="actHead"><span id="actTitle"></span></div><div id="actBody"></div></div>
     <div id="tapEgg" class="hidden"><span class="en">Tap the egg!</span></div>
   </main>
 
@@ -85,6 +87,12 @@
       <h2>🛍️ Shop <span class="wallet">⭐ <b id="shopStars">0</b></span></h2>
       <div class="tabs"><button data-tab="acc" class="on">🎩 Accessories</button><button data-tab="room">🏠 Rooms</button><button data-tab="shell">🥚 Shells</button></div>
       <div id="shopGrid"></div>
+      <button class="big closeModal">Close</button>
+    </div>
+    <div id="diaryBook" class="modal hidden">
+      <h2>📔 My book</h2>
+      <div class="tabs" id="diaryTabs"><button data-tab="diary" class="on">📔 Diary</button><button data-tab="letters">💌 Letters</button><button data-tab="badges">🏅 Badges</button></div>
+      <div id="diaryList"></div>
       <button class="big closeModal">Close</button>
     </div>
     <div id="album" class="modal hidden">
@@ -101,5 +109,6 @@
 <script src="js/bbox.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/game.js"></script>
+<script src="js/activities.js"></script>
 </body>
 </html>

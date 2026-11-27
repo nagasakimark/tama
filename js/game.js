@@ -43,10 +43,10 @@ let particles = [];
 let place = null; // current activity background
 
 function setBg(id) { $('bgLayer').style.backgroundImage = `url(${bgSrc(id)})`; }
-function homeBg() { setBg(shop.room || 'home_03'); $('emojiLayer').innerHTML = ''; place = null; }
+function homeBg() { setBg(shop.room || 'home_03'); $('emojiLayer').innerHTML = decorHtml(); place = null; }
 function goPlace(bg, emoji) {
   setBg(bg); place = bg;
-  $('emojiLayer').innerHTML = emoji ? `<span>${emoji}</span>` : '';
+  $('emojiLayer').innerHTML = emoji ? `<span class="big">${emoji}</span>` : '';
 }
 function setAnim(name, ms = 1200) { view.anim = name; view.animUntil = performance.now() + ms; }
 
@@ -197,6 +197,8 @@ function hideBubble() { $('bubble').classList.add('hidden'); }
 function showNeedBubble() {
   if (!need) return;
   showBubble(need.en);
+  $('hintBtn').classList.toggle('hidden', !!need.activity);
+  $('goBtn').classList.toggle('hidden', !need.activity);
   $('hintBtn').classList.toggle('off', need.tries < 1 && !need.hinted);
 }
 async function say(text, ms = 1800, anim = 'cheer') {
@@ -368,6 +370,7 @@ async function give(it, fromRect) {
     else { await flyEmoji(it.e, fromRect); sfx('refuse.ogg', .4); await say(rnd(["I'm OK. Thank you!", 'No, thank you. Maybe later!']), 1600, 'idle'); }
     hideBubble(); finishBusy(); return;
   }
+  if (need.activity) { finishBusy(); return startActivity(); }
   if (need.ok.includes(it.id)) await success(it, fromRect); else await wrong(it, fromRect);
   finishBusy();
 }
@@ -425,29 +428,48 @@ async function success(it, fromRect) {
     await say(fill(rnd(THANKS[cat] || THANKS.fun), it), 2300);
   } else { // wear etc.
     await flyEmoji(it.e, fromRect);
-    $('emojiLayer').innerHTML = `<span>${it.e}</span>`;
+    $('emojiLayer').innerHTML = `<span class="big">${it.e}</span>`;
     sfx('cheer.ogg', .5); hop(2, 3);
     const line = cat === 'wear' && (need.key === 'cold' || need.key === 'snowy') ? 'Warm! Thank you!' : fill(rnd(THANKS[cat] || THANKS.wear), it);
     await say(line, 1800);
   }
   if (wasBirthday) { sfx('birthday_song_01.ogg', .5); confetti(); await say('Happy birthday to me! Thank you!', 2400); }
-  homeBg();
+  await completeWish({ firstTry, stars: firstTry ? 2 : 1, itemId: it.id, diary: pastLine(it), birthday: wasBirthday });
+}
 
+// bookkeeping after any wish (a "give me ~" wish or an activity)
+async function completeWish({ firstTry = true, stars = 1, itemId = null, diary = null, birthday = false, activity = false }) {
+  homeBg();
   burst(firstTry ? 'star' : 'heart', firstTry ? 3 : 2);
   sfx(firstTry ? 'cheer_success.ogg' : 'task_complete.ogg', .5);
-  shop.stars += firstTry ? 2 : 1; store(SHOP_KEY, shop);
-  pet.starsEarned = (pet.starsEarned || 0) + (firstTry ? 2 : 1);
+  shop.stars += stars; store(SHOP_KEY, shop);
+  pet.starsEarned = (pet.starsEarned || 0) + stars;
   pet.cares = (pet.cares || 0) + 1;
   pet.stats = pet.stats || {}; const st = (pet.stats[pet.stage] = pet.stats[pet.stage] || { asked: 0, first: 0 });
   st.asked++; if (firstTry) st.first++;
-  pet.itemCounts = pet.itemCounts || {}; pet.itemCounts[it.id] = (pet.itemCounts[it.id] || 0) + 1;
+  if (itemId) { pet.itemCounts = pet.itemCounts || {}; pet.itemCounts[itemId] = (pet.itemCounts[itemId] || 0) + 1; }
+  addDiary(diary);
+  noteWish(firstTry);
+  pet.lastWasAct = activity;
   pet.progress++;
-  if (!wasBirthday) pet.wishes = Math.max(0, (pet.wishes || 1) - 1);
+  if (!birthday) pet.wishes = Math.max(0, (pet.wishes || 1) - 1);
   need = null; trayCache = {};
   hideBubble(); save(); updateTop();
   await checkGrowth();
   if (need) showNeedBubble();
   else if (pet && pet.stage > 0) { accrue(); if (pet.wishes > 0) scheduleNeed(); else await allDone(); }
+}
+
+async function startActivity() {
+  if (busy || !need || !need.activity) return;
+  const a = need.activity;
+  busy = true; setCatsEnabled(false); clearTimeout(needTimer); closeTray(); hideBubble();
+  markToday(a.id);
+  let r;
+  try { r = await a.run(); } catch (e) { console.error(e); r = { good: true, stars: 1 }; }
+  actClose();
+  await completeWish({ firstTry: r.good, stars: r.stars, diary: r.diary, activity: true });
+  finishBusy();
 }
 
 // ---------------------------------------------------------------- growth & old age
@@ -482,16 +504,19 @@ async function farewell() {
   hideBubble();
   view.halo = true; setAnim('cheer', 9000);
   for (let i = 0; i < 80; i++) { view.float += 0.6; view.alpha = Math.max(0, 1 - i / 80); if (i % 10 === 0) burst('twinkle', 2); await sleep(45); }
-  const entry = { name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString() };
+  const entry = { name: pet.name, sprite: pet.sprite, stars: pet.starsEarned || 0, cares: pet.cares || 0, born: pet.born, end: new Date().toISOString(), gen: pet.gen || 1, parent: pet.parent || null };
+  heir = { parent: pet.name, gen: (pet.gen || 1) + 1, egg: pet.egg ?? 0 };
+  count('pets'); setCount('gen', heir.gen);
   const alb = load(ALB_KEY, []); alb.unshift(entry); store(ALB_KEY, alb);
-  $('byeEn').textContent = `${pet.name} went to Star Land.`;
+  $('byeEn').textContent = `${pet.name} went to Star Land. ${pet.name} left an egg for you!`;
   $('byeStats').textContent = `⭐ ${entry.stars}  ·  💗 ${entry.cares} requests  ·  100 years old`;
   $('byeCard').classList.remove('hidden');
   pet = null; localStorage.removeItem(SAVE_KEY); buildCats(); updateTop();
   view.halo = false; view.float = 0; view.alpha = 1;
   busy = false;
 }
-$('newEggBtn').onclick = () => { $('byeCard').classList.add('hidden'); startChoice(); };
+let heir = null;
+$('newEggBtn').onclick = () => { $('byeCard').classList.add('hidden'); startChoice(); if (heir) { const h = heir; heir = null; $('eggChoice').classList.add('hidden'); chooseEgg(h.egg, h); } };
 
 // ---------------------------------------------------------------- requests (based on real time)
 // The pet saves up one wish every `settings.every` minutes – also while the game is closed –
@@ -518,7 +543,9 @@ async function newNeed() {
   if (busy || need || !pet || pet.stage === 0 || !pet.name) return;
   accrue();
   if (!(pet.wishes > 0)) { updateProfile(); return; }
-  need = makeNeed(pet.stage);
+  const act = pickActivity();
+  if (act) need = { key: 'act:' + act.id, en: act.intro(), ok: [], tries: 0, activity: act };
+  else need = eventNeed() || makeNeed(pet.stage);
   if (need.poop) pet.poop = true;
   trayCache = {}; view.tx = 48;
   showNeedBubble(); sfx('pop_01.mp3', .4);
@@ -563,7 +590,7 @@ async function welcomeBack() {
     if (!need && !busy && pet.wishes > 0) scheduleNeed(800);
     return;
   }
-  welcoming = true; busy = true; setCatsEnabled(false); clearTimeout(needTimer);
+  welcoming = true; busy = true; setCatsEnabled(false); clearTimeout(needTimer); noteVisit();
   need = null; hideBubble();
   accrue(); save(); updateTop();
   const hours = away / (60 * MIN), days = Math.floor(hours / 24);
@@ -585,6 +612,7 @@ async function welcomeBack() {
   hideBubble(); busy = false; welcoming = false; setCatsEnabled(true);
   if (pet.wishes > 0) scheduleNeed(800);
 }
+$('goBtn').onclick = () => startActivity();
 $('hintBtn').onclick = () => {
   if (!need || (need.tries < 1 && !need.hinted)) return;
   need.hinted = true; glowCats(true); showNeedBubble();
@@ -615,10 +643,10 @@ function startChoice() {
   });
   $('eggChoice').classList.remove('hidden');
 }
-function chooseEgg(i) {
+function chooseEgg(i, fam = null) {
   $('eggChoice').classList.add('hidden'); sfx('ui_click_01.ogg');
   const babies = CHARS.baby;
-  pet = { v: 2, stage: 0, egg: i, sprite: babies[(i * 3 + Math.floor(Math.random() * 3)) % babies.length], progress: 0, eggTaps: 0, cares: 0, stats: {}, itemCounts: {}, seenCats: [], born: null, name: '' };
+  pet = { v: 2, stage: 0, egg: i, sprite: babies[(i * 3 + Math.floor(Math.random() * 3)) % babies.length], progress: 0, eggTaps: 0, cares: 0, stats: {}, itemCounts: {}, seenCats: [], born: null, name: '', gen: fam ? fam.gen : 1, parent: fam ? fam.parent : null };
   view.x = view.tx = 48;
   save(); updateTop();
   $('tapEgg').classList.remove('hidden');
@@ -656,9 +684,10 @@ $('nameOk').onclick = async () => {
   pet.name = v; save(); updateTop();
   const d = new Date(pet.born);
   await say(`My name is ${v}! Nice to meet you!`, 2200);
+  if (pet.parent) await say(`I'm ${pet.parent}'s baby!`, 2200);
   await say(`My birthday is ${d.toLocaleString('en-US', { month: 'long' })} ${d.getDate()}.`, 2400);
   hideBubble(); busy = false;
-  pet.wishes = 3; pet.wishAt = Date.now(); pet.lastSeen = Date.now(); save();
+  pet.wishes = 3; pet.wishAt = Date.now(); pet.lastSeen = Date.now(); save(); noteVisit();
   buildCats(); setCatsEnabled(true); updateTop();
   scheduleNeed(1500);
 };
@@ -702,7 +731,7 @@ function renderShop() {
     d.insertAdjacentHTML('beforeend', `<div>${it.en}</div><div class="price">${on ? '✔ ON' : owned ? T.verb : '⭐ ' + it.price}</div>`);
     d.onclick = () => {
       if (owned) shop[T.key] = on && T.toggle ? null : it.id;
-      else if (shop.stars >= it.price) { shop.stars -= it.price; T.owned.push(it.id); shop[T.key] = it.id; sfx('task_complete.ogg'); }
+      else if (shop.stars >= it.price) { shop.stars -= it.price; T.owned.push(it.id); shop[T.key] = it.id; sfx('task_complete.ogg'); count('bought'); }
       else { sfx('refuse.ogg', .4); return; }
       if (shopTab === 'room' && !place) homeBg();
       if (shopTab === 'shell') applyShell();
@@ -714,6 +743,24 @@ function renderShop() {
 function applyShell() { $('app').style.setProperty('--shell-img', `url(assets/ui/${shop.shell || 'shell_13'}.jpg)`); }
 $('shopBtn').onclick = () => { renderShop(); openModal('shop'); };
 
+// ---------------------------------------------------------------- diary book (diary / letters / badges)
+let diaryTab = 'diary';
+document.querySelectorAll('#diaryTabs button').forEach(b => b.onclick = () => { diaryTab = b.dataset.tab; renderDiary(); });
+function niceDate(d) { const [y, m, dd] = d.split('-').map(Number); return `${MONTHS[m - 1]} ${dd}`; }
+function renderDiary() {
+  document.querySelectorAll('#diaryTabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === diaryTab));
+  const box = $('diaryList');
+  if (diaryTab === 'diary') {
+    const days = (pet && pet.diary || []).slice().reverse();
+    box.innerHTML = days.length ? days.map(d => `<div class="page"><h4>${niceDate(d.d)}</h4>${d.lines.map(l => `<p>${l}</p>`).join('')}<p class="end">It was a good day!</p></div>`).join('') : '<div class="empty">No diary yet.</div>';
+  } else if (diaryTab === 'letters') {
+    box.innerHTML = world.letters.length ? world.letters.map(l => `<div class="page letterp"><h4>${niceDate(l.d)}</h4><p>Dear ${pet ? pet.name : 'friend'},</p><p>${l.text}</p><p class="end">From, ${l.from}</p></div>`).join('') : '<div class="empty">No letters yet.</div>';
+  } else {
+    box.innerHTML = '<div class="badges">' + BADGES.map(b => `<div class="badge ${world.badges.includes(b.id) ? 'got' : ''}"><span>${world.badges.includes(b.id) ? b.e : '🔒'}</span><b>${b.en}</b></div>`).join('') + '</div>';
+  }
+}
+$('diaryBtn').onclick = () => { renderDiary(); openModal('diaryBook'); };
+
 // ---------------------------------------------------------------- album
 $('albumBtn').onclick = () => {
   const list = $('albumList'); list.innerHTML = '';
@@ -724,7 +771,7 @@ $('albumBtn').onclick = () => {
     const cv = document.createElement('canvas'); cv.width = cv.height = 32; d.appendChild(cv);
     if (e.sprite) { const im = img(charSrc(e.sprite)); const draw = () => { const c = cv.getContext('2d'); c.imageSmoothingEnabled = false; drawCell(c, im, 2, im.naturalWidth / 4, (32 - im.naturalWidth / 4) / 2, 32 - im.naturalWidth / 4, false); }; if (im.complete) draw(); else im.addEventListener('load', draw); }
     const born = e.born ? new Date(e.born).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
-    d.insertAdjacentHTML('beforeend', `<b>${e.name}</b>⭐ ${e.stars || 0} · 💗 ${e.cares || 0}<br><small>Born ${born}${e.reset ? ' · (reset)' : ''}</small>`);
+    d.insertAdjacentHTML('beforeend', `<b>${e.name}</b>${e.gen > 1 ? `<i class="gen">Gen ${e.gen} · ${e.parent}'s child</i>` : ''}⭐ ${e.stars || 0} · 💗 ${e.cares || 0}<br><small>Born ${born}${e.reset ? ' · (reset)' : ''}</small>`);
     list.appendChild(d);
   }
   openModal('album');
@@ -759,4 +806,4 @@ function boot() {
   if (pet.wishes === undefined) { pet.wishes = 3; pet.wishAt = Date.now(); }
   setTimeout(welcomeBack, 500);
 }
-boot();
+window.addEventListener('DOMContentLoaded', boot); // after activities.js has loaded
