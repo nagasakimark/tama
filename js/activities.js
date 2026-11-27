@@ -571,16 +571,26 @@ async function toyTime() {
 // ================================================================ JOBS (adult and senior)
 const MENU = [{ id: 'hamburger', p: 300 }, { id: 'pizza', p: 400 }, { id: 'riceball', p: 150 }, { id: 'icecream', p: 200 }, { id: 'juice', p: 150 }, { id: 'milk', p: 100 }];
 async function jobShop() {
-  let cust = null, cx = 110;
-  view.x = view.tx = 30;
+  // like the original's standWork(): our pet works inside the booth on the right,
+  // the booth is drawn over it, and customers walk up from the left in front of the counter
+  let cust = null, cx = -20, leaving = false;
+  view.x = view.tx = 81; const BOOTH_FEET = 70;
   scene('stand', { draw(c, t) {
-    drawMe(c, t, meCell(t));
+    const r = petRect(), cs = r.w, cell = meCell(t), acc = ACCS.find(a => a.id === shop.wearing);
+    const rr = { x: Math.round(view.x - cs / 2), y: BOOTH_FEET - cs, w: cs, h: cs };
+    if (acc && !acc.front) drawAcc(c, acc.id, cell, rr, false, pet.sprite);
+    drawCell(c, img(charSrc(pet.sprite)), cell, cs, rr.x, rr.y, false);
+    if (acc && acc.front) drawAcc(c, acc.id, cell, rr, false, pet.sprite);
     drawPic(c, 'misc/stand_01_booth', 0, 0);
-    if (cust) { if (cx > 72) cx -= .6; drawChar(c, cust, cx, FEET + 2, cx > 72 ? animCell('walk', t) : 1, false); }
+    if (cust) {
+      const goal = leaving ? -40 : 24;
+      if (Math.abs(cx - goal) > .5) cx += Math.sign(goal - cx) * .6;
+      drawChar(c, cust, cx, 96, Math.abs(cx - goal) > .5 ? animCell('walk', t) : 1, !leaving);
+    }
   } });
   let wrong = 0;
   for (let k = 0; k < 2; k++) {
-    cust = rnd([...CHARS.child, ...CHARS.teen, ...CHARS.adult]); cx = 110; await sleep(1100);
+    cust = rnd([...CHARS.child, ...CHARS.teen, ...CHARS.adult]); cx = -20; leaving = false; await sleep(1300);
     const order = pickN(MENU, Math.random() < .7 ? 2 : 1), words = order.map(o => ITEM[o.id].a), line = `${words.join(' and ').replace(/^./, s => s.toUpperCase())}, please.`;
     talk(line, 'Customer');
     const picked = new Set();
@@ -601,7 +611,7 @@ async function jobShop() {
     const total = order.reduce((t, o) => t + o.p, 0);
     talk('Thank you! How much is it?', 'Customer');
     wrong += await choose('💴 How much?', shuffle([total, total + 100, Math.max(100, total - 50)]).map(v => ({ label: `It's ${v} yen.`, v })), o => o.v === total, { cols: 1 });
-    talk('Here you are. Thank you!', 'Customer'); setAnim('cheer', 1000); sfx('task_complete.ogg', .5); await sleep(1300);
+    talk('Here you are. Thank you!', 'Customer'); setAnim('eat', 1000); sfx('task_complete.ogg', .5); leaving = true; await sleep(1600);
     cust = null;
   }
   count('jobs');
