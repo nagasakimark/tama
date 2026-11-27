@@ -163,14 +163,21 @@ async function restaurant() {
   const want = rnd(menu.filter(k => ITEM[k]));
   const waiter = rnd(CHARS.adult);
   let eating = false;
-  view.x = view.tx = 30;
+  let wx = -20, food = null;
+  view.x = view.tx = 82;
   scene('restaurant', { draw(c, t) {
-    drawMe(c, t, meCell(t));
-    drawChar(c, waiter, 72, FEET, 1, false);
-    // what the pet wants, in the original thought bubble
-    if (!eating) { drawPic(c, 'misc/thought_bubble_01', 32, 18); const [bw, bh] = picSize('misc/thought_bubble_01'); drawSheet(c, 'food', FOOD_SPR[want], 32 + bw / 2 - 10, 18 + bh / 2 - 12, 20); }
-    else drawSheet(c, 'food', FOOD_SPR[want], view.x + 8, FEET - 22, 20);
+    if (wx < 30) wx += .5;
+    drawChar(c, waiter, wx, FEET, wx < 30 ? animCell('walk', t) : 1, true);
+    const r = petRect(), cs = r.w, cell = meCell(t), acc = ACCS.find(a => a.id === shop.wearing), y = 80 - cs;
+    const rr = { x: Math.round(view.x - cs / 2), y, w: cs, h: cs };
+    if (acc && !acc.front) drawAcc(c, acc.id, cell, rr, false, pet.sprite);
+    drawCell(c, img(charSrc(pet.sprite)), cell, cs, rr.x, rr.y, false);
+    if (acc && acc.front) drawAcc(c, acc.id, cell, rr, false, pet.sprite);
+    drawPic(c, 'misc/restaurant_table_01', 0, 0);
+    if (eating) drawSheet(c, 'food', FOOD_SPR[want], 56, 64, 20);
+    else { drawPic(c, 'misc/thought_bubble_01', 50, rr.y - 26); const [bw, bh] = picSize('misc/thought_bubble_01'); drawSheet(c, 'food', FOOD_SPR[want], 50 + bw / 2 - 10, rr.y - 26 + bh / 2 - 12, 20); }
   } });
+  await sleep(900);
   talk('Hello! What would you like?', 'Waiter');
   const others = pickN(menu.filter(k => k !== want && ITEM[k]), 2);
   const wrong = await choose('💬 Answer', shuffle([want, ...others]).map(k => ({ label: `I'd like ${ITEM[k].en}, please.`, k })), o => o.k === want, { cols: 1 });
@@ -382,12 +389,12 @@ const RECIPES = [
 const INGR = { carrot: ['plant', 43, 'a carrot'], potato: ['plant', 47, 'a potato'], tomato: ['plant', 35, 'a tomato'], cabbage: ['plant', 31, 'a cabbage'], meat: ['food', 689, 'meat'], banana: ['food', 960, 'a banana'], milk: ['food', 1036, 'milk'], peach: ['plant', 59, 'a peach'] };
 async function cooking() {
   const r = rnd(RECIPES); let inPot = [], stage = 1, done = false;
-  view.x = view.tx = 12;
   scene('kitchen', { draw(c, t) {
-    drawPic(c, 'misc/cooking_pot_p0' + stage, 0, 0);
-    drawMe(c, t, meCell(t));
-    inPot.forEach((k, i) => { const [sh, n] = INGR[k]; drawSheet(c, sh, n, 24 + i * 16, 38 + (i % 2) * 8, 20); });
-    if (done) drawSheet(c, 'food', r.dish ? FOOD_SPR[r.dish] : r.dishSpr, 38, 30, 28);
+    drawPic(c, 'misc/cooking_pot_p01', 0, 0);
+    if (inPot.length) { c.save(); c.globalAlpha = Math.min(1, inPot.length / r.need.length); drawPic(c, 'misc/cooking_pot_p02', 0, 0); c.restore(); }
+    inPot.forEach((k, i) => { const [sh, n] = INGR[k]; const a = t / 900 + i * 2.1; drawSheet(c, sh, n, 38 + Math.cos(a) * 14, 38 + Math.sin(a) * 12, 18); });
+    drawPic(c, 'misc/cooking_pot_p03', 0, 0);
+    if (done) drawSheet(c, 'food', r.dish ? FOOD_SPR[r.dish] : r.dishSpr, 30, 30, 36);
   } });
   const say = `Let's make ${r.en}! Put in ${r.need.map(k => INGR[k][2]).join(', ').replace(/, ([^,]*)$/, ' and $1')}.`;
   talk(say);
@@ -472,17 +479,17 @@ async function feedAnimal() {
 }
 async function washAnimal() {
   const a = world.animal; let foam = 0, rubbed = 0, lastX = null, step = 'wash';
-  view.x = view.tx = 20;
+  view.x = view.tx = 30;
   talk(`${a.name} is dirty. Let's wash ${a.name}!`);
   const box = panel('🛁 Wash time', '<div class="ahelp">👆 Rub on the screen</div>'); const bar = h('<div class="ascore">0%</div>'); box.appendChild(bar);
   await new Promise(res => scene('dogbath', {
     draw(c, t) {
       drawMe(c, t, meCell(t));
-      drawAnimal(c, t, 56, 70, step === 'wash' ? 1 : 2, false);
-      for (let i = 0; i < Math.min(8, foam); i++) drawPic(c, 'misc/foam_single', 46 + (i % 4) * 6 - 6, 52 + Math.floor(i / 4) * 6);
+      drawAnimal(c, t, 64, FEET, step === 'wash' ? 1 : 2, false);
+      for (let i = 0; i < Math.min(8, foam); i++) drawPic(c, 'misc/foam_single', 56 + (i % 4) * 5 - 4, FEET - 18 + Math.floor(i / 4) * 5);
     },
     move(x, y) {
-      if (Math.hypot(x - 56, y - 62) > 18) return;
+      if (Math.hypot(x - 64, y - (FEET - 8)) > 16) return;
       if (lastX !== null && Math.abs(x - lastX) > 2) { rubbed++; if (rubbed % 6 === 0) { foam++; sfx('pop_01.mp3', .2); } bar.textContent = Math.min(100, Math.round(rubbed / 48 * 100)) + '%'; if (rubbed >= 48) res(); }
       lastX = x;
     },
@@ -521,8 +528,8 @@ async function jobTeacher() {
   return { good: wrong === 0, stars: 6, diary: 'I worked as a teacher.' };
 }
 async function jobOffice() {
-  view.x = view.tx = 30; let wrong = 0;
-  scene('office', { draw(c, t) { drawMe(c, t, meCell(t)); drawPic(c, 'misc/laptop', view.x + 12, FEET - 18); } });
+  view.x = view.tx = 51; let wrong = 0;
+  scene('office', { draw(c, t) { drawMe(c, t, meCell(t)); } });
   for (let k = 0; k < 2; k++) {
     const num = Array.from({ length: 3 }, () => Math.floor(Math.random() * 10));
     talk(`Please call ${num.map(n => NUM_WORDS[n]).join(' - ')}.`, 'Boss');
@@ -619,6 +626,7 @@ const FURNITURE = [
 ];
 const SLOTS = [2, 34, 64]; // three places on the floor
 function drawFurniture(c) {
+  if (!FURNISHABLE.includes(shop.room || 'home_03')) return;
   (shop.furn || []).forEach((id, i) => { if (!id) return; const [w, hh] = picSize('furn/' + id); drawPic(c, 'furn/' + id, Math.min(96 - w, SLOTS[i]), FEET - hh + 2); });
 }
 const _drawDecor = drawDecor;
@@ -636,7 +644,7 @@ drawDecor = function (c, t) { drawFurniture(c); _drawDecor(c, t); drawAnimalAtHo
     document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === 'furn'));
     shop.furnOwned = shop.furnOwned || []; shop.furn = shop.furn || [null, null, null];
     const g = $('shopGrid'); g.innerHTML = '';
-    g.appendChild(h('<div class="slotHelp">Tap a thing you have to put it in your room (3 places).</div>'));
+    g.appendChild(h(`<div class="slotHelp">Tap a thing you have to put it in your room (3 places).${FURNISHABLE.includes(shop.room || 'home_03') ? '' : ' ⚠️ This room can\'t have furniture. Use the Peach, Blue, Pastel, Pink, Wood or Night room.'}</div>`));
     for (const it of FURNITURE) {
       const owned = shop.furnOwned.includes(it.id), on = shop.furn.includes(it.id);
       const d = h(`<button class="sitem${owned ? ' owned' : ''}${on ? ' on' : ''}${!owned && shop.stars < it.price ? ' cant' : ''}"></button>`);
@@ -646,7 +654,7 @@ drawDecor = function (c, t) { drawFurniture(c); _drawDecor(c, t); drawAnimalAtHo
         if (!owned) { if (shop.stars < it.price) { sfx('refuse.ogg', .4); return; } shop.stars -= it.price; shop.furnOwned.push(it.id); count('bought'); sfx('task_complete.ogg'); }
         if (on) shop.furn[shop.furn.indexOf(it.id)] = null;
         else { const free = shop.furn.indexOf(null); if (free >= 0) shop.furn[free] = it.id; else { shop.furn.shift(); shop.furn.push(it.id); } }
-        store(SHOP_KEY, shop); updateTop(); renderShop();
+        store(SHOP_KEY, shop); updateTop(); renderShop(); if (!place) homeBg();
       };
       g.appendChild(d);
     }

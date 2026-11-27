@@ -541,7 +541,7 @@ async function toyTime() {
   const target = rnd(spots);
   let placed = null;
   view.x = view.tx = 84;
-  scene(shop.room || 'home_03', { draw(c, t) {
+  scene('home_03_f', { draw(c, t) {
     drawPic(c, F.pic, piece.x, piece.y);
     if (!placed) spots.forEach(s => {
       c.globalAlpha = .55; c.fillStyle = '#fff'; c.beginPath(); c.arc(s.x, s.y, 6, 0, Math.PI * 2); c.fill(); c.globalAlpha = 1;

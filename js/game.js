@@ -42,8 +42,16 @@ const view = { x: 48, tx: 48, jump: 0, flip: false, anim: null, animUntil: 0, wo
 let particles = [];
 let place = null; // current activity background
 
-function setBg(id) { $('bgLayer').style.backgroundImage = `url(${bgSrc(id)})`; }
-function homeBg() { setBg(shop.room || 'home_03'); $('emojiLayer').innerHTML = decorHtml(); place = null; }
+// rooms have see-through windows: the sky behind them follows the real time of day (like the original)
+function skyNow() { const h = new Date().getHours(); return h >= 19 || h < 5 ? 'night' : h >= 16 ? 'evening' : h >= 10 ? 'afternoon' : 'morning'; }
+const FURNISHABLE = ['home_02', 'home_03', 'home_04', 'home_06', 'home_07', 'home_08'];
+function hasFurniture() { return (shop.furn || []).some(Boolean); }
+function setBg(id) {
+  let src = bgSrc(id);
+  if (id === (shop.room || 'home_03') && FURNISHABLE.includes(id) && hasFurniture()) src = `assets/bg/${id}_f.png`; // empty room, so our furniture doesn't sit on top of the room's own sofa
+  $('bgLayer').style.backgroundImage = `url(${src}), url(assets/bg/sky_${skyNow()}.png)`;
+}
+function homeBg() { setBg(shop.room || 'home_03'); place = null; $('emojiLayer').innerHTML = decorHtml(); place = null; }
 function goPlace(bg, emoji) {
   setBg(bg); place = bg;
   $('emojiLayer').innerHTML = emoji ? `<span class="big">${emoji}</span>` : '';
