@@ -27,6 +27,8 @@ const NEEDS = [
   [1, 5, 1.5, s => ({ key: 'sad', en: s >= 3 ? "I'm sad. Hug me, please." : "I'm sad.", ja: 'かなしい…。', ok: ['hug'] })],
   [1, 5, 1.5, s => ({ key: 'poop', en: 'Oops! Sorry!', ja: 'うんち しちゃった！ そうじして！', ok: ['cleanup'], poop: true })],
 
+  [1, 5, 1.2, s => ({ key: 'toilet', en: s >= 3 ? 'I want to go to the toilet.' : 'Toilet, please!', ja: '', ok: ['toilet'] })],
+
   // ----- child -----
   [2, 5, 3, s => { const f = rnd(byCat('food')); return { key: 'want:' + f.id, en: `I want ${f.a}.`, ja: `${f.ja}が ほしい。`, ok: [f.id] }; }],
   [2, 5, 1.5, s => { const f = rnd(byCat('food')); return { key: 'want:' + f.id, en: `${cap1(f.a)}, please!`, ja: `${f.ja}を ください！`, ok: [f.id] }; }],

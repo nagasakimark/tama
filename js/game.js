@@ -132,9 +132,9 @@ function render(t) {
       const p = img('assets/misc/poop.png'); if (p.complete) ctx.drawImage(p, 70, FEET - 14 + (Math.floor(t / 400) % 2));
       const s = img('assets/misc/stinky_01.png'); if (s.complete) { ctx.globalAlpha = .7; ctx.drawImage(s, 0, 0, 16, 16, 70, FEET - 28 - (Math.floor(t / 300) % 3), 16, 16); ctx.globalAlpha = 1; }
     }
-    // walking around
-    if (!busy && !need && pet.stage > 0 && t > view.walkPause && Math.abs(view.tx - view.x) < 0.5) {
-      view.tx = 22 + Math.random() * 52; view.walkPause = t + 2000 + Math.random() * 3000;
+    // walking around (life.js can pick places to go: sofa, toys, the cat or dog)
+    if (!busy && !need && pet.stage > 0 && t > view.walkPause && Math.abs(view.tx - view.x) < 0.5 && !(window.asleep)) {
+      if (!(window.idleTarget && idleTarget(t))) { view.tx = 22 + Math.random() * 52; view.walkPause = t + 2000 + Math.random() * 3000; }
     }
     const speed = pet.stage === 5 ? 0.12 : 0.22;
     if (Math.abs(view.tx - view.x) > 0.3) { view.flip = view.tx > view.x; view.x += Math.sign(view.tx - view.x) * Math.min(speed, Math.abs(view.tx - view.x)); }
@@ -163,7 +163,9 @@ function render(t) {
       if (view.halo) drawAcc(ctx, 'angel_halo_01', 1, rr, false, pet.sprite);
     }
     ctx.globalAlpha = 1;
+    if (window.afterPet) afterPet(ctx, t);
   }
+  if (window.afterAll) afterAll(fx, t);
   // particles
   particles = particles.filter(p => p.life > 0);
   for (const p of particles) {
@@ -630,9 +632,12 @@ $('hintBtn').onclick = () => {
 
 // tap the pet = hug (or egg tap)
 function screenXY(e) { const s = $('screen').getBoundingClientRect(); return [(e.clientX - s.left) / s.width * 96, (e.clientY - s.top) / s.height * 96]; }
-$('screen').addEventListener('pointermove', e => { if (window.actScene && actScene.move) actScene.move(...screenXY(e)); });
+$('screen').addEventListener('pointermove', e => { if (window.actScene && actScene.move) actScene.move(...screenXY(e)); else if (window.homeMove) homeMove(...screenXY(e), e.buttons || e.pointerType === 'touch' ? 1 : 0); });
+['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => $('screen').addEventListener(ev, () => { window.pointerHeld = false; if (window.actScene && actScene.up) actScene.up(); }));
+$('screen').addEventListener('pointerdown', () => { window.pointerHeld = true; }, true);
 $('screen').addEventListener('pointerdown', e => {
   if (window.actScene) { const [x, y] = screenXY(e); actScene.move && actScene.move(x, y); actScene.tap && actScene.tap(x, y); return; }
+  if (window.homeDown && homeDown(...screenXY(e))) return;
   if (!pet || busy) return;
   const [x, y] = screenXY(e);
   const r = petRect();

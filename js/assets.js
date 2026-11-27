@@ -31,6 +31,7 @@ const ANIM = {
   sleep:    { f: [16], t: 500 },
   sit:      { f: [14], t: 500 },
   kiss:     { f: [12, 13], t: 250 },
+  openmouth:{ f: [3], t: 500 },
 };
 
 // home rooms you can buy with stars

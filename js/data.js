@@ -150,6 +150,7 @@ const ITEMS = [
   { id: 'teeth', cat: 'clean', e: '🪥', en: 'brush my teeth', ja: 'はみがき' },
   { id: 'hands', cat: 'clean', e: '🧼', en: 'wash my hands', ja: 'てあらい' },
   { id: 'cleanup', cat: 'clean', e: '🧹', en: 'clean up', ja: 'そうじ' },
+  { id: 'toilet', cat: 'clean', e: '🚽', en: 'go to the toilet', ja: 'トイレ' },
 
   // ---------- single actions ----------
   { id: 'bed', cat: 'sleep', e: '🛏️', en: 'sleep', ja: 'ねる' },

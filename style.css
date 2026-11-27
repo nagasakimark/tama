@@ -253,3 +253,39 @@ button { font-family: inherit; cursor: pointer; border: none; }
 .slotHelp { grid-column: 1 / -1; font-size: 18px; color: #9a7a4a; font-weight: 600; }
 .fthumb { height: 96px; display: flex; align-items: flex-end; justify-content: center; }
 .fthumb img { max-height: 92px; }
+
+/* ================= touch hint (original tap-pointer) ================= */
+.thint { position: absolute; z-index: 6; pointer-events: none; transform: translate(-30%, -10%); display: flex; flex-direction: column; align-items: center; }
+.thint i { width: 42px; height: 60px; background: url(assets/ui/hand.png) center / contain no-repeat; image-rendering: pixelated; filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
+.thint b { background: #ff7a1a; color: #fff; font-size: 20px; padding: 0 12px; border-radius: 12px; margin-top: -6px; box-shadow: 0 3px 0 #c95f00; }
+#app.tama .thint i { width: 35px; height: 50px; } #app.tama .thint b { font-size: 16px; }
+.thint.rub i { animation: hintRub .9s ease-in-out infinite; }
+.thint.tap i { animation: hintTap .9s ease-in-out infinite; }
+.thint.move i { animation: hintMove 1.6s ease-in-out infinite; }
+@keyframes hintRub { 0%,100% { transform: translateX(-22px) rotate(-10deg); } 50% { transform: translateX(22px) rotate(10deg); } }
+@keyframes hintTap { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(8px) scale(.88); } }
+@keyframes hintMove { 0%,100% { transform: translateX(-40px); } 50% { transform: translateX(40px); } }
+.chat { position: absolute; z-index: 5; transform: translate(-50%, -100%); background: #fff; border: 3px solid #3a2a14; border-radius: 14px; padding: 2px 10px; font-size: 18px; font-weight: 600; white-space: nowrap; pointer-events: none; animation: pop .3s; }
+#app.tama .chat { font-size: 14px; }
+.flash { position: absolute; inset: 0; background: #fff; z-index: 9; animation: flashOut .4s forwards; }
+@keyframes flashOut { to { opacity: 0; } }
+#cupGrid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; max-height: 360px; overflow: auto; padding: 4px; }
+.recipe { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; background: #fff8e0; border: 3px solid #ffe0a8; border-radius: 16px; padding: 6px 12px; }
+.recipe.cant { opacity: .55; }
+.rin, .rout { display: flex; align-items: center; gap: 6px; } .rout { flex: 1; }
+.ing { display: flex; flex-direction: column; align-items: center; font-size: 15px; } .plus, .eq { font-size: 28px; font-weight: 700; color: #ff7a1a; }
+.recipe .big { margin: 0; font-size: 20px; padding: 6px 18px; }
+.movebtn { display: inline-block; margin-top: 4px; background: #2ab3e6; color: #fff; border-radius: 10px; padding: 2px 10px; font-size: 15px; }
+#albumList .photo img { width: 144px; height: 144px; image-rendering: pixelated; border-radius: 8px; display: block; margin: 0 auto 4px; }
+.colhead { grid-column: 1 / -1; font-size: 22px; font-weight: 700; text-align: center; }
+.colgrid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px; max-height: 330px; overflow: auto; }
+.colbox { background: #f4f4f4; border-radius: 8px; display: block; }
+.colgrid canvas { width: 44px; height: 44px; image-rendering: pixelated; display: block; }
+.colgrid canvas.unseen { filter: brightness(0) opacity(.35); }
+.tree { grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.treenode { display: flex; align-items: center; gap: 12px; background: #fff8e0; border: 3px solid #ffe0a8; border-radius: 16px; padding: 4px 18px; min-width: 300px; }
+.treenode.now { border-color: #2ab3e6; background: #e2f6ff; }
+.treenode canvas { width: 64px; height: 64px; image-rendering: pixelated; }
+.treenode b { font-size: 22px; } .treenode small { display: block; color: #9a7a4a; }
+.treearrow { font-size: 22px; color: #9a7a4a; }
+.trait { font-size: 14px; background: #ffe58a; color: #7a5200; border-radius: 10px; padding: 2px 10px; margin-left: auto; }

@@ -494,7 +494,8 @@ async function garden() {
   view.hidden = false;
   let wrong = 0, diary = '';
   if (mode === 'plant') {
-    const crop = rnd(CROPS.filter(c => !g.some(p => p && p.id === c.id)));
+    const owned = CROPS.filter(c => !g.some(p => p && p.id === c.id) && (!world.seeds || (world.seeds[c.id] || 0) > 0));
+    const crop = rnd(owned.length ? owned : CROPS);
     talk(`Let's plant ${crop.pl}!`);
     wrong = await choose('🌱 Which seeds?', shuffle([crop, ...pickN(CROPS.filter(c => c.id !== crop.id), 2)]).map(c => ({ label: `${c.pl}`, icon: icon('plant', c.spr + 2, 64), id: c.id })), o => o.id === crop.id, { cols: 3 });
     const i = g.findIndex(p => !p); g[i] = { id: crop.id, stage: 0, watered: d };
@@ -512,7 +513,7 @@ async function garden() {
     view.tx = PATCH_X[idx] - 16;
     if (mode === 'harvest') {
       g[idx] = null; sfx('cheer_success.ogg', .5); setAnim('cheer', 1500); burst('star', 3); count('harvests');
-      talk(`Yummy ${crop.pl}!`); diary = `I picked ${crop.pl}.`;
+      talk(/tulip/.test(crop.id) ? `Pretty ${crop.pl}!` : `Yummy ${crop.pl}!`); diary = `I picked ${crop.pl}.`;
     } else {
       canAt = idx; sfx('pop_01.mp3', .5); await sleep(1100); canAt = -1; wet = idx;
       p.stage++; p.watered = d; setAnim('cheer', 1000);

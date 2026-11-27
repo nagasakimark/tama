@@ -19,6 +19,8 @@
     <div id="starBox" class="pill" title="Stars – spend them in the shop">⭐ <b id="starTxt">0</b></div>
     <div class="spacer"></div>
     <button id="viewBtn" class="round wide" title="Tamagotchi view"><span id="viewIc">🥚</span> <span id="viewLb">Tama view</span></button>
+    <button id="camBtn" class="round" title="Take a photo">📷</button>
+    <button id="cupBtn" class="round" title="Cupboard">🧺</button>
     <button id="shopBtn" class="round" title="Shop">🛍️</button>
     <button id="diaryBtn" class="round" title="Diary">📔</button>
     <button id="albumBtn" class="round" title="Album">📖</button>
@@ -96,8 +98,15 @@
       <div id="diaryList"></div>
       <button class="big closeModal">Close</button>
     </div>
+    <div id="cupboard" class="modal hidden">
+      <h2>🧺 Cupboard</h2>
+      <div class="tabs" id="cupTabs"><button data-tab="eat" class="on">😋 Eat</button><button data-tab="make">🍳 Make</button><button data-tab="sell">💰 Sell</button></div>
+      <div id="cupGrid"></div>
+      <button class="big closeModal">Close</button>
+    </div>
     <div id="album" class="modal hidden">
       <h2>📖 Album</h2>
+      <div class="tabs" id="albumTabs"><button data-tab="pets" class="on">👼 My pets</button><button data-tab="family">🌳 Family</button><button data-tab="photos">📷 Photos</button><button data-tab="collection">📚 Collection</button></div>
       <div id="albumList"></div>
       <button class="big closeModal">Close</button>
     </div>
@@ -112,5 +121,6 @@
 <script src="js/game.js"></script>
 <script src="js/activities.js"></script>
 <script src="js/places.js"></script>
+<script src="js/life.js"></script>
 </body>
 </html>
